@@ -1,0 +1,13 @@
+config:
+  do: toggle
+defaults:
+  do: none
+import:
+  pardon:todo:
+    - getCompleted
+>>>
+PUT //
+
+{
+  completed: "{{completed = !await getCompleted({ todo, origin }) }}"
+}

@@ -1,0 +1,17 @@
+
+>>>
+POST https://todo.example.com/todos
+Content-Type: application/json
+
+{
+  "task": "{{task}}"
+}
+
+<<<
+200 OK
+
+{
+  id: "{{todo}}",
+  completed: "{{?completed}}",
+  task: "{{?task}}"
+}

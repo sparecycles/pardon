@@ -1,0 +1,2 @@
+do=toggle
+PUT https://todo.example.com/todos/{{todo}}

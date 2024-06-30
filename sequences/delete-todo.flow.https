@@ -1,0 +1,6 @@
+context:
+  - origin
+  - todo
+>>>
+DELETE https://todo.example.com/todos/{{todo}}
+

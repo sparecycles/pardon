@@ -1,0 +1,19 @@
+{
+  "type": "module",
+  "scripts": {
+    "start": "node ./lib/server"
+  },
+  "pardon": {
+    "example": {
+      "values": "env=local",
+      "request": "GET https://todo.example.com/ping"
+    },
+    "collections": [
+      "./collection"
+    ],
+    "samples": "./samples"
+  },
+  "optionalDependencies": {
+    "pardon": "file:../pardon/packages/pardon"
+  }
+}

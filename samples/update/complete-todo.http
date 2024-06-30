@@ -1,0 +1,2 @@
+completed=true
+PUT https://todo.example.com/todos/{{todo}}

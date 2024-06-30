@@ -1,0 +1,11 @@
+
+>>>
+GET https://todo.example.com/todos/{{todo}}
+
+<<<
+200 OK
+
+{
+  "task": "{{task}}",
+  "completed": "{{completed}}",
+}

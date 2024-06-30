@@ -1,0 +1,12 @@
+context:
+  - origin
+  - todo
+>>>
+GET https://todo.example.com/todos/{{todo}}
+
+<<<
+200 OK
+
+{
+  "completed": "{{completed}}"
+}

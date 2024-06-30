@@ -1,0 +1,7 @@
+config:
+  origin:
+    env:
+      psuedo: https://todo.example.com
+      local: http://localhost:{{port=3000}}
+
+export: ./todo-helper.ts

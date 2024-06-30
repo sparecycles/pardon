@@ -1,0 +1,18 @@
+mixin:
+  - ./toggle.mix.https
+>>>
+PUT https://todo.example.com/todos/{{todo}}
+Content-Type: application/json
+
+{
+  task: "{{?task}}",
+  completed: bool("{{?completed}}")
+}
+
+<<<
+200
+
+{
+  task: "{{task}}",
+  "completed": "{{completed}}"
+}

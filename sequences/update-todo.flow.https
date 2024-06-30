@@ -1,0 +1,10 @@
+context:
+  - origin
+  - todo
+  - completed = true
+>>>
+PUT https://todo.example.com/todos/{{todo}}
+
+{
+  completed: "{{completed}}"
+}

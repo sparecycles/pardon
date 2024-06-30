@@ -1,0 +1,13 @@
+context:
+  - origin
+  - task
+>>>
+POST https://todo.example.com/todos
+
+<<<
+200 OK
+
+{
+  "id": "{{todo}}",
+  "completed": "{{completed}}"
+}
