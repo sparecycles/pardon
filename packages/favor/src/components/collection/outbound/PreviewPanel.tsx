@@ -93,6 +93,7 @@ export default function PreviewPanel(
       {...props}
       readonly
       nowrap
+      label="request preview"
       value={preview()}
       class={twMerge(
         "relative flex w-0 min-w-0 flex-1 bg-gray-200 dark:bg-stone-800 [&_.cm-line]:pr-8 [&_.cm-line]:text-sm",

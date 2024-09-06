@@ -123,6 +123,7 @@ export default function ResponseView(
         <CodeMirror
           readonly
           nowrap
+          label="http response"
           value={show(
             execution.loading
               ? { status: "rejected", reason: undefined }

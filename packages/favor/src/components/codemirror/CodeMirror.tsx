@@ -27,6 +27,8 @@ import {
   type JSX,
   createMemo,
   Accessor,
+  mergeProps,
+  createSignal,
 } from "solid-js";
 
 import { twMerge } from "tailwind-merge";
@@ -47,6 +49,7 @@ export type CodeMirrorProps = CreateCodeMirrorProps & {
     editorView: Accessor<EditorView>;
   }) => void;
   icon?: JSX.Element;
+  label?: string | JSX.Element;
   text?: string;
   nowrap?: boolean;
 } & ComponentProps<"div">;
@@ -92,8 +95,16 @@ export default function CodeMirror(props: CodeMirrorProps) {
     ["editorViewRef", "setup", "readonly", "icon"],
   );
 
-  const { editorView, ref, createExtension } =
-    createCodeMirror(codemirrorProps);
+  const [value, setValue] = createSignal<string>(props.value ?? "");
+
+  const { editorView, ref, createExtension } = createCodeMirror(
+    mergeProps(codemirrorProps, {
+      onValueChange: (value) => {
+        setValue(value);
+        codemirrorProps.onValueChange?.(value);
+      },
+    } as Pick<typeof codemirrorProps, "onValueChange">),
+  );
 
   createExtension(
     createMemo(() => (!props.nowrap ? EditorView.lineWrapping : undefined)),
@@ -136,7 +147,7 @@ export default function CodeMirror(props: CodeMirrorProps) {
         return editorView();
       }
     }),
-    createMemo(() => props.value ?? ""),
+    createMemo(() => setValue(props.value ?? "")),
   );
 
   createExtension(() =>
@@ -156,6 +167,18 @@ export default function CodeMirror(props: CodeMirrorProps) {
       class={twMerge("overflow-hidden [&_.cm-editor]:size-full", props.class)}
     >
       <Show when={props.icon}>{props.icon!}</Show>
+      <Show when={props.label}>
+        <div
+          class="pointer-events-none absolute inset-0 flex text-center text-xs text-gray-500 opacity-0 mix-blend-exclusion transition-opacity duration-700"
+          classList={{
+            "opacity-100": !value().trim(),
+          }}
+        >
+          <div class="mx-auto place-self-center rounded-full border-2 border-current px-2 py-0.5">
+            {props.label}
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }

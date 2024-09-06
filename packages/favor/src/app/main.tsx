@@ -479,6 +479,7 @@ ${previewText()}
                   <Resizable.Panel class="flex" initialSize={0.4}>
                     <DataInput
                       class="w-0 min-w-0 flex-1 bg-yellow-100 dark:bg-stone-700"
+                      label="globals"
                       nowrap
                       onDataChange={({ values, doc }) => {
                         setGlobals(values);
@@ -636,6 +637,7 @@ ${previewText()}
                     class="flex"
                   >
                     <DataInput
+                      label="request / ask"
                       class="w-0 flex-1 overflow-auto bg-yellow-100 dark:bg-stone-700 [&_.cm-line]:pr-8"
                       editorViewRef={(view) => (httpInputEditorView = view)}
                       defaultValue={httpInitialValue()}
