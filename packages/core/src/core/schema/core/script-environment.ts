@@ -192,12 +192,12 @@ export class ScriptEnvironment implements SchemaScriptEnvironment {
     });
   }
 
-  reconfigurePatterns(context: SchemaContext, patterns: Pattern[]) {
+  reconfigurePatterns(context: SchemaRenderContext, patterns: Pattern[]) {
     if (context.scope?.scopePath()?.length) {
       return patterns;
     }
 
-    return this.space.reconfigurePatterns(patterns);
+    return this.space.reconfigurePatterns(context, patterns);
   }
 
   choose(requirements: Record<string, string>) {

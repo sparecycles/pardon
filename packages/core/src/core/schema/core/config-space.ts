@@ -22,7 +22,7 @@ import {
 } from "./pattern.js";
 import { arrayIntoObject, mapObject } from "../../../util/mapping.js";
 import { diagnostic } from "./context-util.js";
-import { SchemaMergingContext } from "./types.js";
+import { SchemaMergingContext, SchemaRenderContext } from "./types.js";
 import { isScalar } from "../definition/scalar.js";
 
 export type ConfigMapping =
@@ -91,8 +91,9 @@ export class ConfigSpace {
       resolve(p: Pattern): string | undefined;
     },
   ) {
-    const space = this.configurations(patterns);
     const { template } = context;
+
+    const space = this.configurations(patterns);
 
     // if there's no related configuration for these patterns,
     // mix in the stub pattern and bail.
@@ -115,98 +116,102 @@ export class ConfigSpace {
       return [stubPattern, ...patterns];
     }
 
-    const {
-      // all the possible configuration patterns and what they imply
+    return this.resolveTemplate(context, resolve, space).patterns;
+  }
+
+  resolveTemplate(
+    context: SchemaMergingContext<string>,
+    resolve: (p: Pattern) => string | undefined,
+    {
       possible,
-      // other patterns (that may be useful in defining the value)
-      other,
-      // the patterns/options that are related to the current value
       naturally,
-      // the implied options of the current value
       nature,
-    } = space;
+      other: patterns,
+    }: Exclude<ReturnType<ConfigSpace["configurations"]>, undefined>,
+  ) {
+    const { template } = context;
 
-    if (template !== undefined) {
-      if (typeof template === "function") {
-        diagnostic(context, "config on template of string?");
-      }
-
-      const stubPattern =
-        context.mode === "match"
-          ? patternLiteral(template as string)
-          : patternize(template as string);
-      const stubValue = resolve(stubPattern);
-
-      if (stubValue) {
-        other.unshift(patternLiteral(stubValue));
-      } else {
-        other.unshift(stubPattern);
-      }
-
-      const matchings = possible.filter(({ pattern }) =>
-        stubValue !== undefined
-          ? patternMatch(pattern, stubValue)
-          : patternsSimilar(pattern, stubPattern),
-      );
-
-      this.possibilities = this.possibilities.filter((possibility) =>
-        matchings.some(({ option }) => compatible(possibility, option)),
-      );
-    } else {
+    if (template === undefined) {
       this.possibilities = this.possibilities.filter((possibility) =>
         compatible(possibility, nature),
       );
+
+      return { patterns, template };
     }
 
-    const selected = possible
-      .filter(({ option }) =>
-        this.possibilities.some((possibility) =>
-          compatible(possibility, option),
-        ),
-      )
-      .filter(
-        ({ pattern }) =>
-          !other.some((other) => trivialPatternMatch(pattern, other)),
-      );
+    if (typeof template === "function") {
+      throw diagnostic(context, "config on template of string?");
+    }
 
-    const rewritten = other
-      .flatMap((pattern) =>
-        naturally.flatMap(({ pattern: from }) =>
-          selected.flatMap(({ pattern: to }) => {
-            const rewritten = pattern.rewrite(from, to);
-            return rewritten;
-          }),
-        ),
-      )
-      .filter(Boolean)
-      .filter(
-        (rewrittenPattern) =>
-          !other.some((otherPattern) =>
-            trivialPatternMatch(otherPattern, rewrittenPattern),
-          ),
-      );
+    const stubPattern =
+      context.mode === "match"
+        ? patternLiteral(template as string)
+        : patternize(template as string);
 
-    const selectedOrRewrittenPatterns = [
-      ...selected.map(({ pattern }) => pattern),
+    const stubValue = resolve(stubPattern);
+
+    const matchings = possible.filter(({ pattern }) =>
+      stubValue !== undefined
+        ? patternMatch(pattern, stubValue)
+        : patternsSimilar(pattern, stubPattern),
+    );
+
+    this.possibilities = this.possibilities.filter((possibility) =>
+      matchings.some(({ option }) => compatible(possibility, option)),
+    );
+
+    const selected = possible.filter(({ option }) =>
+      this.possibilities.some((possibility) => compatible(possibility, option)),
+    );
+
+    const selections = selected.map((s) => s.pattern);
+
+    const rewritten = patterns.flatMap((pattern) => {
+      const natural = naturally
+        .flatMap(({ pattern: from }) =>
+          selections.map((to) => pattern.rewrite(from, to)),
+        )
+        .filter(Boolean);
+
+      return [pattern, ...natural];
+    });
+
+    patterns = [
+      stubValue ? patternLiteral(stubValue) : stubPattern,
       ...rewritten,
-    ];
-
-    // check for incompatible configured patterns
-    // (do we need to check any other pairs?)
-    if (
-      other.some((otherPattern) =>
-        selectedOrRewrittenPatterns.some(
-          (pattern) => !arePatternsCompatible(otherPattern, pattern),
+    ].filter(
+      (rewritten) =>
+        !selections.some((selection) =>
+          trivialPatternMatch(selection, rewritten),
         ),
-      )
-    ) {
-      return undefined;
-    }
+    );
 
-    return [...selectedOrRewrittenPatterns, ...other];
+    return { patterns: [...patterns, ...selections], template: stubValue };
   }
 
-  reconfigurePatterns(patterns: Pattern[]) {
+  contextCompatible(
+    context: SchemaRenderContext,
+    possibility: Record<string, string>,
+    targets: Set<string>,
+  ) {
+    for (const [k, v] of Object.entries(possibility)) {
+      if (targets.has(k)) {
+        continue;
+      }
+
+      const resolvedValue = context.scope?.resolve(context, k)?.value;
+      if (
+        resolvedValue !== undefined &&
+        !patternMatch(patternize(v), String(resolvedValue))
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  reconfigurePatterns(context: SchemaRenderContext, patterns: Pattern[]) {
     const space = this.configurations(patterns);
 
     if (!space) {
@@ -215,51 +220,54 @@ export class ConfigSpace {
 
     const { possible, naturally, other } = space;
 
-    const compatibleNature = implied(
-      naturally.map(({ option }) =>
-        compatibleSubset(option, this.possibilities),
+    const targets = new Set(
+      other.flatMap((p) =>
+        isPatternRegex(p) ? p.vars.map(({ param }) => param) : [],
       ),
     );
 
-    const selected = possible.filter(({ option }) =>
-      this.possibilities.some(
-        (possibility) =>
-          compatible(compatibleNature, option) &&
-          compatible({ ...option, ...compatibleNature }, possibility),
-      ),
-    );
+    const selections = possible
+      .filter(({ option }) => this.contextCompatible(context, option, targets))
+      .map(({ pattern }) => pattern);
 
-    const rewritten = other.flatMap((pattern) =>
-      naturally.flatMap(({ pattern: from }) =>
-        selected.flatMap(
-          ({ pattern: to }) => pattern.rewrite(from, to) ?? pattern,
-        ),
-      ),
-    );
+    if (selections.length > 1) {
+      diagnostic(
+        context,
+        "multiple choices: " + selections.map((p) => p.source).join(" | "),
+      );
+    }
 
-    return [...selected.map(({ pattern }) => pattern), ...rewritten];
+    const rewritten = other.flatMap((pattern) => {
+      const natural = naturally
+        .flatMap(({ pattern: from }) =>
+          selections.map((to) => pattern.rewrite(from, to)),
+        )
+        .filter(Boolean);
+
+      if (natural.length) {
+        return natural;
+      }
+
+      return [pattern];
+    });
+
+    return [...selections, ...rewritten];
   }
 
-  configurations(patterns: Pattern[]) {
-    const { configurable, all } = patterns.reduce(
-      (acc, pattern) => {
-        if (isPatternRegex(pattern)) {
-          const configurable = pattern.vars.some(({ param }) =>
-            this.options.some((option) => option[param] !== undefined),
-          );
+  configurable(patterns: Pattern[]) {
+    return patterns.filter(
+      (pattern) =>
+        isPatternRegex(pattern) &&
+        pattern.vars.some(({ param }) =>
+          this.options.some((option) => option[param] !== undefined),
+        ),
+    ) as PatternRegex[];
+  }
 
-          if (configurable) {
-            acc.configurable.push(pattern);
-          }
-        }
-
-        acc.all.push(pattern);
-
-        return acc;
-      },
-      { configurable: [] as PatternRegex[], all: [] as Pattern[] },
-    );
-
+  configurations(
+    patterns: Pattern[],
+    configurable = this.configurable(patterns),
+  ) {
     if (configurable.length === 0) {
       return;
     }
@@ -279,20 +287,19 @@ export class ConfigSpace {
     );
 
     const same = possible.filter(({ pattern: possibility }) =>
-      all.some((pattern) => trivialPatternMatch(pattern, possibility)),
+      patterns.every((pattern) => arePatternsCompatible(pattern, possibility)),
     );
 
-    const other = all.filter(
+    const other = patterns.filter(
       (pattern) =>
-        !possible.some(({ pattern: possibility }) =>
-          trivialPatternMatch(pattern, possibility),
+        configurable.some((c) => trivialPatternMatch(pattern, c)) ||
+        !same.some(({ pattern: possibility }) =>
+          arePatternsCompatible(pattern, possibility),
         ),
     ) as Pattern[];
 
     const nature = implied(same.map(({ option }) => option));
-    const naturally = possible.filter(({ option }) =>
-      compatible(option, nature),
-    );
+    const naturally = same.filter(({ option }) => compatible(option, nature));
 
     return { possible, nature, naturally, other };
   }
@@ -412,21 +419,5 @@ function compatible(
     return (
       ck === undefined || v === String(ck) || matchesPattern(v, String(ck))
     );
-  });
-}
-
-function compatibleSubset(
-  config: Record<string, unknown>,
-  possibilities: Record<string, string>[],
-) {
-  return arrayIntoObject(Object.entries(config), ([key, value]) => {
-    if (
-      possibilities.some(
-        ({ [key]: possibility }) =>
-          possibility === undefined || String(value) === possibility,
-      )
-    ) {
-      return { [key]: String(value) };
-    }
   });
 }

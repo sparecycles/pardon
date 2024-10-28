@@ -222,30 +222,39 @@ export function patternize(
         throw new Error("rewrite from / to not regexes");
       }
 
-      const toParams = new Set(from.vars.map(({ param }) => param));
+      let unnamed = 0;
+      const toParams = new Set(
+        from.vars.map(({ param }) => param || `[${unnamed++}]`),
+      );
 
+      unnamed = 0;
       // return undefined for non-matching from/to pairs.
       if (
         from.vars.length !== toParams.size ||
-        !from.vars.every(({ param }) => toParams.has(param))
+        !from.vars.every(({ param }) => toParams.has(param || `[${unnamed++}]`))
       ) {
         return undefined;
       }
 
-      const fromMap = arrayIntoObject(from.vars, ({ param }, idx) =>
-        param ? { [param]: idx } : false,
-      );
+      unnamed = 0;
+      const fromMap = arrayIntoObject(from.vars, ({ param }, idx) => {
+        const p = param || `[${unnamed++}]`;
+        return p ? { [p]: idx } : false;
+      });
 
       if (this.vars.length) {
         if (to.re.source !== re.source) {
           return undefined;
         }
 
+        unnamed = 0;
+
         return patternize(
           patternRender(
             to,
             to.vars.map(({ param }) => {
-              const fromIdx = fromMap[param];
+              const p = param || `[${unnamed++}]`;
+              const fromIdx = fromMap[p];
               return `{{${vars[fromIdx].source}}}`;
             }),
           ),
@@ -258,11 +267,12 @@ export function patternize(
         return undefined;
       }
 
+      unnamed = 0;
       return patternize(
         patternRender(
           to,
           to.vars.map(({ param }, idx) => {
-            const fromIdx = fromMap[param];
+            const fromIdx = fromMap[param || `[${unnamed++}]`];
             if (fromIdx === undefined) {
               return `{{${to.vars[idx].source}}}`;
             }
@@ -299,6 +309,13 @@ export function isPatternExpressive(pattern: Pattern) {
 }
 
 export function arePatternsCompatible(a: Pattern, b: Pattern) {
+  if (isPatternTrivial(a)) {
+    return patternMatch(b, patternRender(a, []));
+  }
+  if (isPatternTrivial(b)) {
+    return patternMatch(a, patternRender(b, []));
+  }
+
   const aps = patternEnds(a);
   const bps = patternEnds(b);
 
@@ -347,20 +364,6 @@ export function patternsSimilar(a: Pattern, b: Pattern) {
   }
   if (isPatternRegex(a) && isPatternRegex(b)) {
     return a.re.source === b.re.source;
-  }
-}
-
-export function patternsMatch(a: Pattern, b: Pattern) {
-  if (isPatternLiteral(a) && isPatternLiteral(b)) {
-    return a.source === b.source;
-  }
-
-  if (isPatternRegex(a) && isPatternRegex(b)) {
-    return a.re.source === b.re.source && a.source === b.source;
-  }
-
-  if (isPatternTrivial(a) && isPatternTrivial(b)) {
-    return renderTrivialPattern(a) === renderTrivialPattern(b);
   }
 }
 
@@ -493,9 +496,5 @@ export function trivialPatternMatch(pattern: Pattern, other: Pattern) {
 
   if (renderedPattern !== undefined && renderedPossibility !== undefined) {
     return renderedPattern === renderedPossibility;
-  }
-
-  if (renderedPattern) {
-    return patternMatch(other, renderedPattern);
   }
 }

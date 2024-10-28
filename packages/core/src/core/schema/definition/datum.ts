@@ -22,7 +22,6 @@ import {
   patternMatch,
   patternRender,
   patternize,
-  patternsMatch,
 } from "../core/pattern.js";
 import {
   isNonEmpty,
@@ -113,9 +112,25 @@ function mergeRepresentation<T extends Scalar>(
       }
     }
 
-    if (!patterns?.some((existing) => patternsMatch(pattern, existing))) {
-      patterns = [pattern, ...(patterns ?? [])];
-    }
+    /*
+     * This is where the patterns/values we have get
+     * interpolated by the config: mapping into
+     * matching alternates.  It also reduces the set
+     * of matching alternates as resolved patterns are merged.
+     */
+    patterns = context.environment.match({
+      context: {
+        ...context,
+        template: info?.value,
+      },
+      patterns,
+      resolve(pattern) {
+        return resolvePattern(context, pattern);
+      },
+      patternize(s: string) {
+        return patternize(s, custom ?? defaultScalarBuilding);
+      },
+    })!;
   }
 
   return {
@@ -256,7 +271,6 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
       }
     },
     merge(context) {
-      const { environment } = context;
       const info = extractDatumInfo(context);
       const mergedSelf = mergeRepresentation(context, self, info);
 
@@ -264,33 +278,15 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
         return;
       }
 
-      const { patterns, type, custom, unboxed } = mergedSelf;
+      const { patterns, type, unboxed } = mergedSelf;
 
-      /*
-       * This is where the patterns/values we have get
-       * interpolated by the config: mapping into
-       * matching alternates.  It also reduces the set
-       * of matching alternates as resolved patterns are merged.
-       */
-      const configuredPatterns = environment.match({
-        context: {
-          ...context,
-          template: info?.value,
-        },
-        patterns,
-        resolve(pattern) {
-          return resolvePattern(context, pattern);
-        },
-        patternize(s: string) {
-          return patternize(s, custom ?? defaultScalarBuilding);
-        },
-      });
+      const configuredPatterns = patterns;
 
       if (!configuredPatterns) {
         if (info?.value !== undefined) {
           diagnostic(
             context,
-            `incompatible stub ${info.value} with ${patterns.map(({ source }) => JSON.stringify(source)).join(", ")}`,
+            `incompatible stub ${info.value} with ${self.patterns.map(({ source }) => JSON.stringify(source)).join(", ")}`,
           );
           return undefined;
         }
@@ -455,11 +451,11 @@ function resolveScalar<T extends Scalar>(
           },
         });
 
-  if (!configuredPatterns && forScope) {
+  if (!configuredPatterns?.length && forScope) {
     return;
   }
 
-  if (!configuredPatterns) {
+  if (!configuredPatterns?.length) {
     throw diagnostic(context, `configuration exhausted`);
   }
 
@@ -692,6 +688,7 @@ function findFullyDefinedPattern(context: SchemaContext, patterns: Pattern[]) {
 
 function resolveDefinedPattern(context: SchemaContext, patterns: Pattern[]) {
   const definition = findFullyDefinedPattern(context, patterns);
+
   if (definition) {
     const { params, pattern } = definition;
 

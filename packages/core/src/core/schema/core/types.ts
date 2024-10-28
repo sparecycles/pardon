@@ -255,7 +255,10 @@ export interface SchemaScriptEnvironment {
     resolve(p: Pattern): unknown | undefined;
   }): Pattern[] | undefined;
 
-  reconfigurePatterns(context: SchemaContext, pattern: Pattern[]): Pattern[];
+  reconfigurePatterns(
+    context: SchemaRenderContext,
+    pattern: Pattern[],
+  ): Pattern[];
 
   init(info: { context: SchemaContext }): SchemaScriptEnvironment;
 

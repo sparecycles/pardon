@@ -78,7 +78,6 @@ type PromiseExecution = {
 type PromiseResolution =
   | {
       promise: PromiseExecution;
-      sequence: number;
     }
   | Record<string, never>;
 
@@ -100,6 +99,8 @@ const promiseRegistry = new FinalizationRegistry((asyncId: number) => {
 
   promises.delete(asyncId);
 });
+
+const noop = () => {};
 
 /**
  * This is a shared counter for
@@ -153,12 +154,16 @@ const trackingHook = createHook({
     }
 
     promises.set(asyncId, {
-      trigger: promises.get(triggerAsyncId)?.resolution,
       init: currentPromise,
       tracking: useTracking(currentPromise),
+      // the promise that triggers execution flows into resolution,
+      // all all promise awaiting that will receive it.
       resolution: {},
+      trigger: promises.get(triggerAsyncId)?.resolution,
     });
 
+    // we can GC the object we just set up along with the
+    // the resource. (TODO: does this make sense for non-PROMISE resources?)
     promiseRegistry.register(resource, asyncId);
   },
   before(asyncId) {
@@ -175,7 +180,8 @@ const trackingHook = createHook({
     // this is largely redundant with executionAsyncId()
     // except it's possible for other async resources.
     //
-    // (not sure if this is the correct thing or not)
+    // this is used to correctly unwind currentPromise in
+    // the paired after() hook.
     promiseAsyncId = asyncId;
   },
   promiseResolve(asyncId) {
@@ -183,7 +189,6 @@ const trackingHook = createHook({
 
     if (promise && currentPromise) {
       promise.resolution.promise = currentPromise;
-      promise.resolution.sequence = executionSequenceCounter++;
     }
   },
   after(asyncId) {
@@ -199,7 +204,6 @@ function propagateTracking(into: PromiseExecution) {
   into.trigger = into.init = undefined;
 
   const resolution = from?.promise;
-  const source = useTracking(resolution);
 
   // one weird case: when resolution === init we must bail.
   // otherwise constructions like
@@ -207,20 +211,24 @@ function propagateTracking(into: PromiseExecution) {
   //   await ...;
   //   await p;
   // will show 'x' as tracked erroneosly.
-  if (!source || resolution === init) {
+  //
+  // (this is the only reason we need to track init.)
+  if (!resolution?.tracking || resolution === init) {
     return;
   }
 
   if (into.tracking === undefined) {
-    into.tracking = source;
+    into.tracking = useTracking(resolution);
     return;
   }
 
-  if (into.tracking === source) {
+  if (into.tracking === resolution?.tracking) {
     return;
   }
 
   const target = makeValueTracking(into);
+
+  const source = resolution.tracking;
 
   for (let key = sentinelKey.next; key !== sentinelKey; key = key.next) {
     const sourceValues = source.get(key);
@@ -260,13 +268,11 @@ type TrackedValue<T> = {
   identity: number;
 };
 
-function awaited(
-  collector: (tracking: ValueTracking, sequence: number) => void,
-): void {
+function awaited(collector: (tracking: ValueTracking) => void): void {
   const tracking = currentPromise?.tracking;
 
   if (tracking) {
-    collector(tracking, Infinity);
+    collector(tracking);
   }
 }
 
@@ -291,16 +297,16 @@ export function shared<T>(fn: () => Promise<T>): Promise<T> {
 
   // disarm the promise before returning it
   let promise: Promise<T>;
-  (promise = _shared(fn)).catch(() => {});
+  (promise = _shared(fn)).catch(noop);
 
   return promise;
 }
 
 // helper for shared().
 async function _shared<T>(fn: () => T | Promise<T>): Promise<T> {
-  await Promise.resolve();
+  await 0;
   _unlink();
-  await Promise.resolve();
+  await 0;
 
   return await fn();
 }
@@ -312,7 +318,7 @@ async function _shared<T>(fn: () => T | Promise<T>): Promise<T> {
  */
 export async function disconnected<T>(fn: () => T | Promise<T>): Promise<T> {
   try {
-    await Promise.resolve();
+    await 0;
     return await fn();
   } finally {
     await _unlink();
@@ -332,7 +338,7 @@ export function semaphore(n: number = 1) {
       const task = todo.shift();
 
       task!()
-        .catch(() => {})
+        .catch(noop)
         .finally(() => {
           n++;
 
@@ -458,7 +464,7 @@ export function tracking<T>() {
       const tracked: T[] = [];
       const seen = new Set<number>();
 
-      awaited((tracking, sequence) => {
+      awaited((tracking) => {
         const list = tracking.get(key);
 
         if (!list) {
@@ -466,10 +472,6 @@ export function tracking<T>() {
         }
 
         for (const item of list) {
-          if (item.identity > sequence) {
-            break;
-          }
-
           if (seen.has(item.identity)) {
             continue;
           }
@@ -620,11 +622,9 @@ async function disturb<T>(settled: PromiseSettledResult<T>): Promise<T> {
 function disarmPromises(promises: Iterable<unknown>) {
   for (const promise of promises) {
     // safe-ish disarm for promise-like values
-    if (typeof (promise as Partial<Promise<unknown>>)?.then === "function") {
-      (promise as Partial<Promise<unknown>>)?.then?.(
-        () => {},
-        () => {},
-      );
+    const then = (promise as Partial<Promise<unknown>>)?.then;
+    if (typeof then === "function") {
+      then?.call?.(promise, noop, noop);
     }
   }
 }
