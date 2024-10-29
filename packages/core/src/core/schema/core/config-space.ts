@@ -124,9 +124,9 @@ export class ConfigSpace {
     resolve: (p: Pattern) => string | undefined,
     {
       possible,
-      naturally,
       nature,
-      other: patterns,
+      others,
+      configurable,
     }: Exclude<ReturnType<ConfigSpace["configurations"]>, undefined>,
   ) {
     const { template } = context;
@@ -136,7 +136,7 @@ export class ConfigSpace {
         compatible(possibility, nature),
       );
 
-      return { patterns, template };
+      return { patterns: others, template };
     }
 
     if (typeof template === "function") {
@@ -166,17 +166,19 @@ export class ConfigSpace {
 
     const selections = selected.map((s) => s.pattern);
 
-    const rewritten = patterns.flatMap((pattern) => {
-      const natural = naturally
+    const rewritten = others.flatMap((pattern) => {
+      return [{ pattern }]
         .flatMap(({ pattern: from }) =>
-          selections.map((to) => pattern.rewrite(from, to)),
+          selections.map(
+            (to) =>
+              pattern.rewrite(from, to) ??
+              (configurable.includes(from as PatternRegex) ? from : undefined),
+          ),
         )
         .filter(Boolean);
-
-      return [pattern, ...natural];
     });
 
-    patterns = [
+    const filtered = [
       stubValue ? patternLiteral(stubValue) : stubPattern,
       ...rewritten,
     ].filter(
@@ -186,7 +188,9 @@ export class ConfigSpace {
         ),
     );
 
-    return { patterns: [...patterns, ...selections], template: stubValue };
+    const patterns = [...filtered, ...selections];
+
+    return { patterns, template: stubValue };
   }
 
   contextCompatible(
@@ -218,10 +222,10 @@ export class ConfigSpace {
       return patterns;
     }
 
-    const { possible, naturally, other } = space;
+    const { possible, naturally, others } = space;
 
     const targets = new Set(
-      other.flatMap((p) =>
+      others.flatMap((p) =>
         isPatternRegex(p) ? p.vars.map(({ param }) => param) : [],
       ),
     );
@@ -237,19 +241,13 @@ export class ConfigSpace {
       );
     }
 
-    const rewritten = other.flatMap((pattern) => {
-      const natural = naturally
-        .flatMap(({ pattern: from }) =>
+    const rewritten = others
+      .flatMap((pattern) =>
+        [{ pattern }, ...naturally].flatMap(({ pattern: from }) =>
           selections.map((to) => pattern.rewrite(from, to)),
-        )
-        .filter(Boolean);
-
-      if (natural.length) {
-        return natural;
-      }
-
-      return [pattern];
-    });
+        ),
+      )
+      .filter(Boolean);
 
     return [...selections, ...rewritten];
   }
@@ -264,10 +262,9 @@ export class ConfigSpace {
     ) as PatternRegex[];
   }
 
-  configurations(
-    patterns: Pattern[],
-    configurable = this.configurable(patterns),
-  ) {
+  configurations(patterns: Pattern[]) {
+    const configurable = this.configurable(patterns);
+
     if (configurable.length === 0) {
       return;
     }
@@ -290,7 +287,7 @@ export class ConfigSpace {
       patterns.every((pattern) => arePatternsCompatible(pattern, possibility)),
     );
 
-    const other = patterns.filter(
+    const others = patterns.filter(
       (pattern) =>
         configurable.some((c) => trivialPatternMatch(pattern, c)) ||
         !same.some(({ pattern: possibility }) =>
@@ -301,7 +298,7 @@ export class ConfigSpace {
     const nature = implied(same.map(({ option }) => option));
     const naturally = same.filter(({ option }) => compatible(option, nature));
 
-    return { possible, nature, naturally, other };
+    return { possible, nature, naturally, others, configurable };
   }
 
   update(name: string, value: unknown): unknown {
