@@ -97,7 +97,6 @@ export type HttpsTemplateConfiguration<
   | "defaults"
   | "path"
   | "import"
-  | "search"
   | "type"
   | "encoding"
   | "export"

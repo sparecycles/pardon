@@ -582,7 +582,6 @@ export function mergeConfigurations({
         | "mixin"
         | "type"
         | "encoding"
-        | "search"
         | "flow"
       >
     >(
@@ -595,7 +594,6 @@ export function mergeConfigurations({
           export: exports,
           mixin,
           type,
-          search,
           encoding,
           flow,
           //...other
@@ -607,7 +605,6 @@ export function mergeConfigurations({
           ? mergeData(defaults ?? {}, merged.defaults)
           : mergeData(merged.defaults, defaults ?? {}),
         encoding: encoding ?? merged.encoding,
-        search: search ?? merged.search,
         import: Object.assign(
           {},
           merged.import!,

@@ -188,12 +188,12 @@ export const PardonFetchExecution = pardonExecution({
     };
   },
   async match({ context: { url, init, ...context } }) {
-    const fetchObject = fetchIntoObject(url, init);
+    const request = fetchIntoObject(url, init);
 
     if (typeof context.values?.method === "string") {
-      fetchObject.method ??= context.values?.method;
+      request.method ??= context.values?.method;
 
-      if (context.values?.method !== fetchObject.method) {
+      if (context.values?.method !== request.method) {
         throw new Error(
           "specified values method does not match reqeust method",
         );
@@ -203,8 +203,8 @@ export const PardonFetchExecution = pardonExecution({
     // pathname undefined in some places is allowed (matches any template),
     // but we want to ensure it's set when matching requests.
     // but allow undefined origin and pathname for undefined URLs matched/rendered only by values.
-    if (fetchObject.origin) {
-      fetchObject.pathname ||= "/";
+    if (request.origin) {
+      request.pathname ||= "/";
     }
 
     if (context.options?.unmatched) {
@@ -223,15 +223,15 @@ export const PardonFetchExecution = pardonExecution({
         },
       };
 
-      const encoding = endpoint.configuration.encoding ?? fetchObject.encoding;
+      const encoding = endpoint.configuration.encoding ?? request.encoding;
       const archetype = httpsRequestSchema(encoding, {
-        search: { multivalue: endpoint.configuration.search === "multi" },
+        search: { multivalue: request?.meta?.searchParams == "multi" },
       });
 
       const muxed = mergeSchema(
         { mode: "mux", phase: "build" },
         archetype,
-        fetchObject,
+        request,
         createEndpointEnvironment({
           compiler,
           endpoint,
@@ -252,7 +252,7 @@ export const PardonFetchExecution = pardonExecution({
       };
     }
 
-    const matches = matchRequest(fetchObject, context);
+    const matches = matchRequest(request, context);
 
     if (matches.length === 1) {
       const [result] = matches;
@@ -283,8 +283,8 @@ export const PardonFetchExecution = pardonExecution({
       .filter(Boolean) as PardonExecutionMatch[];
 
     return (
-      context.select?.(goodMatches, { context, fetchObject }) ??
-      selectOne(goodMatches, { context, fetchObject })
+      context.select?.(goodMatches, { context, fetchObject: request }) ??
+      selectOne(goodMatches, { context, fetchObject: request })
     );
   },
   async preview({

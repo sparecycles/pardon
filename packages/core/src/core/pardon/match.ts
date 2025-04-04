@@ -99,7 +99,7 @@ class PardonEndpointMatcher {
     const encoding: EncodingTypes | undefined = endpoint.configuration.encoding;
 
     this.archetypeSchema = httpsRequestSchema(encoding, {
-      search: { multivalue: endpoint.configuration.search === "multi" },
+      search: { multivalue: request?.meta?.searchParams == "multi" },
     }) as Schema<HttpsRequestObject>;
   }
 
