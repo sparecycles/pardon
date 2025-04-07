@@ -575,14 +575,7 @@ export function mergeConfigurations({
     .reduce<
       Pick<
         Configuration & EndpointConfiguration,
-        | "config"
-        | "defaults"
-        | "import"
-        | "export"
-        | "mixin"
-        | "type"
-        | "encoding"
-        | "flow"
+        "config" | "defaults" | "import" | "export" | "mixin" | "type" | "flow"
       >
     >(
       (
@@ -594,7 +587,6 @@ export function mergeConfigurations({
           export: exports,
           mixin,
           type,
-          encoding,
           flow,
           //...other
         },
@@ -604,7 +596,6 @@ export function mergeConfigurations({
         defaults: mixing
           ? mergeData(defaults ?? {}, merged.defaults)
           : mergeData(merged.defaults, defaults ?? {}),
-        encoding: encoding ?? merged.encoding,
         import: Object.assign(
           {},
           merged.import!,

@@ -98,7 +98,6 @@ export type HttpsTemplateConfiguration<
   | "path"
   | "import"
   | "type"
-  | "encoding"
   | "export"
 >;
 

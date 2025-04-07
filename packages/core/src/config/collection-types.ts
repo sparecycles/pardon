@@ -39,7 +39,6 @@ export type Configuration<
   mixin?: string | string[];
   import?: ConfigurationImports;
   export?: string;
-  encoding?: EncodingTypes;
   type?: "service" | "config";
   flow?: HttpsFlowConfig;
 } & (ProcessingPhase extends "source"

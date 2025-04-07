@@ -223,8 +223,7 @@ export const PardonFetchExecution = pardonExecution({
         },
       };
 
-      const encoding = endpoint.configuration.encoding ?? request.encoding;
-      const archetype = httpsRequestSchema(encoding, {
+      const archetype = httpsRequestSchema(request.meta?.encoding, {
         search: { multivalue: request?.meta?.searchParams == "multi" },
       });
 

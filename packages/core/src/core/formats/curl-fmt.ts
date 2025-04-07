@@ -166,7 +166,7 @@ function parse(command: string): {
 
   const bodyAndEncoding: {
     body?: string;
-    encoding?: FetchObject["encoding"];
+    encoding?: Exclude<FetchObject["meta"], undefined>["encoding"];
   } =
     opts.data !== undefined
       ? { body: opts.data }

@@ -158,11 +158,11 @@ function parseResponseObject(response: string): ResponseObject {
   scanComments(lines, { andBlankLines: true });
   const [, status, statusText] = /\s*(\d+)(?:\s*(.*))?$/.exec(lines.shift()!)!;
 
-  const { headers } = scanHeaders(lines);
+  const { headers, meta } = scanHeaders(lines);
 
   const body = scanBody(lines);
 
-  return { status, statusText, headers: new Headers(headers), body };
+  return { status, statusText, headers: new Headers(headers), meta, body };
 }
 
 function scanHeaders(lines: string[]) {
