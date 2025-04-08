@@ -155,10 +155,17 @@ describe("schema json tests", () => {
 
     const ctx = matchContext(s, "a=hello&a=world");
     const merged = merge(s, ctx);
-    assert.equal(ctx.evaluationScope.lookup("x")?.value, "hello");
+    assert.equal(
+      ctx.evaluationScope.subscope("a.0").lookup("x")?.value,
+      "hello",
+    );
+    assert.equal(
+      ctx.evaluationScope.subscope("a.1").lookup("x")?.value,
+      "world",
+    );
 
     const result = await executeOp(merged!, "render", renderCtx(merged!));
-    assert.match(result!, /a=hello[&]a=world/);
+    assert.match(result!, /^a=hello[&]a=world$/);
   });
 
   const builtins = {

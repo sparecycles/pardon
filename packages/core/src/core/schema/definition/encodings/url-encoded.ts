@@ -75,13 +75,20 @@ export function urlEncodedTemplate({
     multivalue
       ? keyed.mv<[string, string]>(
           arrays.tuple(["{{key}}", undefined!]) as Template<[string, string]>,
-          objects.object(
-            {} as Record<string, [string, string][]>,
-            arrays.multivalue(
+          objects.object<Record<string, [string, string][]>>(
+            arrayIntoObject(
               searchParamTemplate,
-              arrays.tuple([undefined, undefined]) as unknown as Template<
-                [string, string]
-              >,
+              ([k, v]) => ({
+                [k]: [[k, v] as [string, string]],
+              }),
+              (acc, values) =>
+                Object.entries(values).reduce(
+                  (acc, [k, v]) =>
+                    Object.assign(acc, {
+                      [k]: [...(acc[k] ?? []), ...v],
+                    }),
+                  acc,
+                ),
             ),
           ),
         )
