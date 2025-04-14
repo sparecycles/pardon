@@ -415,7 +415,9 @@ export const PardonFetchExecution = pardonExecution({
     };
   },
   async fetch({ context: { timestamps }, outbound: { request, redacted } }) {
-    timestamps.request = Date.now();
+    if (timestamps) {
+      timestamps.request = Date.now();
+    }
 
     const [url, init] = intoFetchParams(request);
 

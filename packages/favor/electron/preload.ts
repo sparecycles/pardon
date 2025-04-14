@@ -161,6 +161,14 @@ ipcRenderer.addListener("test:event", (_event, message) => {
   ]?.(message as any);
 });
 
+ipcRenderer.on("pardon:zen-mode", (_event, checked) => {
+  if (checked) {
+    document.getElementById("zen-mode-style").removeAttribute("media");
+  } else {
+    document.getElementById("zen-mode-style").setAttribute("media", "disabled");
+  }
+});
+
 ipcRenderer.addListener("pardon:lifecycle", async (_event, message) => {
   switch (message) {
     case "worker":
@@ -168,10 +176,17 @@ ipcRenderer.addListener("pardon:lifecycle", async (_event, message) => {
   }
 });
 
-// typesafety
-function invokePardonWorker<Action extends keyof PardonWorkerHandlers>(
+// typesafety and exception handling
+async function invokePardonWorker<Action extends keyof PardonWorkerHandlers>(
   action: Action,
   ...args: Parameters<PardonWorkerHandlers[Action]>
-): ReturnType<PardonWorkerHandlers[Action]> {
-  return ipcRenderer.invoke("pardon", action, ...args) as any;
+): Promise<Awaited<ReturnType<PardonWorkerHandlers[Action]>>> {
+  const result = (await ipcRenderer.invoke("pardon", action, ...args)) as any;
+
+  console.log(action, args, result);
+  if (result.exception) {
+    throw result.exception;
+  }
+
+  return result;
 }

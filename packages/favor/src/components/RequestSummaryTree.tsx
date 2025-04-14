@@ -19,23 +19,15 @@ import {
   on,
   Show,
   splitProps,
-  useContext,
   JSX,
 } from "solid-js";
-import {
-  TbChartArrows,
-  TbChevronRight,
-  TbCopy,
-  TbPencil,
-  TbTrash,
-} from "solid-icons/tb";
+import { TbChevronRight, TbCopy, TbPencil, TbTrash } from "solid-icons/tb";
 import { twMerge } from "tailwind-merge";
 import Toggle from "./Toggle.tsx";
 import HttpMethodIcon from "./HttpMethodIcon.tsx";
 import LoadingSplash from "./LoadingSplash.tsx";
 import { Trace } from "./request-history.ts";
 import { displayHttp } from "./display-util.ts";
-import { RequestSummaryInfo } from "./RequestHistory.tsx";
 import { HTTP } from "pardon/formats";
 import { recv } from "pardon/utils";
 
@@ -44,12 +36,13 @@ export type HistoryTree = { trace: number; deps: HistoryTree[] };
 export function RequestSummaryTree(props: {
   traces: Record<number, Trace>;
   trace: number;
-  isCurrent: (trace: number) => boolean;
   deps: HistoryTree[];
-  onRestore: (history: ExecutionHistory) => void;
   path?: number[];
   expandedSet: Set<string>;
-  clearTrace?: (trace: number) => void;
+  isCurrent(trace: number): boolean;
+  onRestore(history: ExecutionHistory): void;
+  onReload(history: ExecutionHistory): void;
+  clearTrace?(trace: number): void;
 }) {
   const path = createMemo(() => [...(props.path ?? []), props.trace]);
   return (
@@ -57,7 +50,7 @@ export function RequestSummaryTree(props: {
       {...props}
       path={path()}
       trace={recv(props.traces[props.trace])}
-      current={props.isCurrent(props.trace)}
+      current={props.isCurrent(Number(props.trace))}
       exapandable={props.deps.length > 0}
     >
       <For each={props.deps}>
@@ -70,6 +63,7 @@ export function RequestSummaryTree(props: {
             path={path()}
             expandedSet={props.expandedSet}
             onRestore={props.onRestore}
+            onReload={props.onReload}
             clearTrace={props.clearTrace}
           />
         )}
@@ -81,14 +75,15 @@ export function RequestSummaryTree(props: {
 export function RequestSummaryNode(props: {
   trace: Trace;
   current?: boolean;
-  onRestore(history: ExecutionHistory): void;
-  clearTrace?(trace: number): void;
   path: number[];
   expandedSet: Set<string>;
   children?: JSX.Element;
   fallback?: JSX.Element;
   exapandable?: boolean;
   note?: JSX.Element;
+  onRestore(history: ExecutionHistory): void;
+  onReload(history: ExecutionHistory): void;
+  clearTrace?(trace: number): void;
 }) {
   const depth = createMemo(() => props.path?.length ?? 0);
   const pathkey = createMemo(() => props.path.join(":"));
@@ -127,6 +122,7 @@ export function RequestSummaryNode(props: {
               <RequestSummary
                 trace={props.trace}
                 onRestore={props.onRestore}
+                onReload={props.onReload}
                 clearTrace={props.clearTrace}
                 note={props.note}
                 current={props.current}
@@ -154,6 +150,7 @@ export function RequestSummaryNode(props: {
           <RequestSummary
             trace={props.trace}
             onRestore={props.onRestore}
+            onReload={props.onReload}
             clearTrace={props.clearTrace}
             note={props.note}
             current={props.current}
@@ -176,7 +173,8 @@ export function RequestSummaryNode(props: {
 export function RequestSummary(
   props: {
     trace: Trace;
-    onRestore?(history: ExecutionHistory): void;
+    onRestore(history: ExecutionHistory): void;
+    onReload(history: ExecutionHistory): void;
     clearTrace?(trace: number): void;
     note?: JSX.Element;
     current?: boolean;
@@ -185,6 +183,7 @@ export function RequestSummary(
   const [, spanProps] = splitProps(props, [
     "trace",
     "onRestore",
+    "onReload",
     "clearTrace",
     "note",
     "current",
@@ -193,29 +192,11 @@ export function RequestSummary(
     displayHttp(props.trace.render?.outbound?.request),
   );
   const response = createMemo(() => props.trace?.result?.inbound.response);
-  const summaryInfo = useContext(RequestSummaryInfo);
 
   return (
     <div class="relative flex flex-1 flex-row gap-1 px-1 py-0.5 [&:hover>.faded]:opacity-75">
       <button
-        class="rounded-sm p-0.5 text-xs"
-        onClick={() => {
-          summaryInfo?.outbound(props.trace);
-        }}
-      >
-        <TbChartArrows class="pointer-events-none relative" />
-      </button>
-      <button
-        class="rounded-sm p-0.5 text-xs"
-        disabled={!props.trace?.result}
-        onClick={() => {
-          summaryInfo?.inbound(props.trace);
-        }}
-      >
-        <TbChartArrows class="pointer-events-none rotate-90" />
-      </button>
-      <button
-        class="flex w-0 flex-1 overflow-hidden rounded-none p-0 text-left align-middle active:!bg-slate-300 dark:active:!bg-slate-600"
+        class="flex w-0 flex-1 overflow-hidden rounded-none p-0 text-left align-middle active:!bg-slate-300 dark:hover:!bg-slate-600/50 dark:active:!bg-slate-600"
         classList={{
           "bg-transparent": !props.current,
           "bg-gray-400 bg-opacity-25": props.current,
@@ -240,6 +221,8 @@ export function RequestSummary(
             },
             outbound,
             inbound: result?.inbound,
+            endpoint: undefined!,
+            outcome: undefined!,
           });
         }}
       >

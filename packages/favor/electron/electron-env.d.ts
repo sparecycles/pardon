@@ -34,8 +34,6 @@ declare global {
   type PardonExecutionSource = {
     http: string;
     values: Record<string, unknown>; // actual values, usually the combined value
-    comp: Record<string, unknown>; // the "comparison" value, changes trigger refresh
-    hint?: string; // selected endpoint or service, (only matters when the request is ambiguous)
     history?: {
       context: {
         trace: number;
@@ -49,15 +47,8 @@ declare global {
         response: ResponseJSON;
         values: Record<string, unknown>;
       };
-      secure?: {
-        outbound: {
-          request: RequestJSON;
-        };
-        inbound: {
-          response: ResponseJSON;
-          values: Record<string, unknown>;
-        };
-      };
+      endpoint: string;
+      outcome: string;
     };
   };
   type ExecutionHistory = Exclude<PardonExecutionSource["history"], undefined>;

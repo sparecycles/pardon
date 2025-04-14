@@ -43,6 +43,8 @@ import {
   initTrackingEnvironment,
 } from "pardon/running";
 
+import exceptionHandling from "./exception-handling.js";
+
 const [cwd] = argv.slice(2);
 
 const tracingHooks = {
@@ -152,6 +154,7 @@ async function initializePardonAndLoadSamples(
       Date.now(), // should make trace ids unique per run?
     ),
     remember,
+    exceptionHandling,
   ]);
 
   const samples = loadSamples(app.samples || []);
@@ -211,28 +214,34 @@ function handling<Action extends keyof typeof handlers>(
   return (async (...args: Parameters<(typeof handlers)[Action]>) => {
     try {
       return await (handlers[action] as any)(...args);
-    } catch (error) {
-      console.warn(`error:${action}: ${error}`);
+    } catch (exception) {
+      console.warn(`error:${action}`, typeof exception, exception);
+      if (!exception.error || !exception.step) {
+        throw exception;
+      }
+      let { error, step } = exception;
 
       const stack = [];
 
-      let theerror = error as any;
-      while (theerror?.cause) {
-        if ("stack" in theerror) {
+      while (error?.cause) {
+        if ("stack" in error) {
           stack.push(
             "--- in ---",
-            ...String(theerror.stack).split("\n").slice(0, 1),
+            ...String(error.stack).split("\n").slice(0, 1),
           );
         }
-        theerror = theerror.cause;
+        error = error.cause;
       }
 
-      const rejection = Promise.reject(
-        String((error as Error)?.stack ?? error) +
-          (stack.length ? `\n${stack.join("\n")}` : ""),
-      );
-
-      rejection.catch(() => {});
+      const rejection = Promise.resolve({
+        exception: JSON.stringify({
+          action,
+          step,
+          stack:
+            String((error as Error)?.stack ?? error) +
+            (stack.length ? `\n${stack.join("\n")}` : ""),
+        }),
+      });
 
       return rejection;
     }
@@ -276,10 +285,14 @@ function executeToRender(
 ) {
   const { options, select } = makeSelector(workerOptions);
 
-  return pardon(input, {
-    options: { ...options, parsecurl: true },
-    select,
-  })`${http.trim() || [input.method ?? "GET", "//"].join(" ").trim()}`.render();
+  try {
+    return pardon(input, {
+      options: { ...options, parsecurl: true },
+      select,
+    })`${http.trim() || [input.method ?? "GET", "//"].join(" ").trim()}`.render();
+  } catch (error) {
+    throw { step: "sync", info: { input, options }, error };
+  }
 }
 
 type PardonExecutionRender = {
@@ -427,12 +440,13 @@ const handlers = {
     const { trace, ask, durations } =
       (await execution.context) as PardonHttpExecutionContext;
 
-    const render: PardonExecutionRender = {
+    const render: PardonExecutionRender & { http: string } = {
       context: {
         trace,
         ask,
         durations,
       },
+      http: HTTP.stringify({ ...redacted, values: reduced }),
       outbound: {
         request: HTTP.requestObject.json({ ...redacted, values: reduced }),
       },
@@ -470,7 +484,7 @@ const handlers = {
       },
     };
 
-    return {
+    const result = {
       context: { ask, trace, durations },
       endpoint,
       outcome: inbound.outcome,
@@ -484,8 +498,11 @@ const handlers = {
         response: HTTP.responseObject.json(inbound.redacted),
         values: inbound.values,
       },
-      secure: secure as typeof secure | undefined,
+      secure,
     };
+
+    return result as Omit<typeof result, "secure"> &
+      Partial<Pick<typeof result, "secure">>;
   },
   async archetype(httpsMaybe: string) {
     try {

@@ -25,6 +25,9 @@ import { JSON } from "../json.js";
 
 export type TsMorphTransform = (control: TransformTraversalControl) => ts.Node;
 
+// disable assertions in typescript.
+(ts as any).Debug.setAssertionLevel(1);
+
 const expressionProject = new Project({
   compilerOptions: {
     allowJs: true,

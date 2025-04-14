@@ -10,145 +10,186 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import {
-  createResource,
-  createSignal,
-  onCleanup,
-  ResourceReturn,
-  type Accessor,
-} from "solid-js";
-import settle from "../util/settle.ts";
-import { manifest } from "./pardon-config.ts";
+import { createMemo, createSignal, on, type Accessor } from "solid-js";
 import { deferred, recv, ship } from "pardon/utils";
-import { setSecureData } from "../components/secure-data.ts";
-
-function postfilter(selected: string) {
-  return selected?.startsWith("endpoint:")
-    ? { endpoint: selected.slice("endpoint:".length) }
-    : selected?.startsWith("config:")
-      ? { service: selected.slice("config:".length) }
-      : {};
-}
-
-export type ExecutionStatus =
-  | "pending"
-  | "inflight"
-  | "complete"
-  | "aborted"
-  | "historical";
-
-export type UnsettledResourceType<
-  X extends (...args: any) => ResourceReturn<PromiseSettledResult<any>>,
-> = ReturnType<ReturnType<X>[0]>;
-
-export type SettledResourceType<
-  X extends (...args: any) => ResourceReturn<PromiseSettledResult<any>>,
-> =
-  UnsettledResourceType<X> extends PromiseSettledResult<infer T>
-    ? T | null
-    : never;
+import { HTTP } from "pardon/formats";
 
 export type ExecutionResult =
   | ({ type: "response" } & Awaited<ReturnType<typeof window.pardon.continue>>)
   | ({ type: "history" } & ExecutionHistory);
 
-export type ExecutionOutboundResult =
-  | ({ type: "request"; context: { ask: string; trace: number } } & Omit<
-      Awaited<ReturnType<typeof window.pardon.render>>,
-      "secure"
-    >)
-  | ({ type: "history" } & Omit<ExecutionHistory, "secure">);
+export type ExecutionOutboundResult = {
+  type: "request" | "history";
+  context: { ask: string; trace: number };
+} & Omit<Awaited<ReturnType<typeof window.pardon.render>>, "secure">;
 
-export type ExecutionInboundResult =
-  | ({ type: "response" } & Omit<
-      Awaited<ReturnType<typeof window.pardon.continue>>,
-      "secure"
-    >)
-  | ({ type: "history" } & Omit<ExecutionHistory, "secure">);
+export type ExecutionProgress =
+  | "history"
+  | "preview"
+  | "rendering"
+  | "pending"
+  | "errored"
+  | "inflight"
+  | "complete"
+  | "failed";
 
-export function executionResource(source: Accessor<PardonExecutionSource>) {
-  const [preview] = previewResource(source);
-  const [outbound] = outboundResource(source);
+export function executionMemo(source: Accessor<PardonExecutionSource>) {
+  return createMemo(
+    on<
+      PardonExecutionSource,
+      {
+        abort(reason: any): void;
+        progress: ExecutionProgress;
+        preview: ReturnType<typeof window.pardon.preview>;
+        request: Promise<
+          Awaited<ReturnType<typeof window.pardon.render>> & {
+            type: "history" | "request";
+          }
+        >;
+        response: Promise<
+          Awaited<ReturnType<typeof window.pardon.continue>> & {
+            type: "history" | "response";
+          }
+        >;
+        send(): void;
+      }
+    >(source, (source, _previousSource, previous) => {
+      const { http, values, history } = source;
 
-  return { preview, outbound };
-}
+      const gates = {
+        preview: deferred<boolean>(),
+        render: deferred<boolean>(),
+        response: deferred<boolean>(),
+      };
 
-function previewResource(source: Accessor<PardonExecutionSource>) {
-  return createResource(
-    () => ({ manifest: manifest(), source: source() }),
-    async ({ source: { http, values, hint } }) => {
-      return recv(
-        await settle(
-          window.pardon.preview(http, ship(values), {
-            pretty: true,
-            ...postfilter(hint),
-          }),
-        ),
+      const [progress, setProgress] = createSignal<ExecutionProgress>(
+        history ? "history" : "preview",
       );
-    },
-  );
-}
 
-function outboundResource(source: Accessor<PardonExecutionSource>) {
-  return createResource(
-    () => ({ manifest: manifest(), source: source() }),
-    async ({ source: { http, values, hint, history } }) => {
-      const requestGate = deferred<boolean>();
-      const [execution, setExecution] =
-        createSignal<ExecutionStatus>("pending");
+      const abort = (reason) => {
+        for (const gate of Object.values(gates)) {
+          gate.resolution.reject(reason);
+        }
+      };
 
-      const action: () => Promise<ExecutionOutboundResult> =
-        history && history.inbound
-          ? (): Promise<ExecutionOutboundResult> => {
-              requestGate.resolution.resolve(true);
-              setExecution("historical");
+      for (const [type, gate] of Object.entries(gates)) {
+        gate.promise.catch((reason) => {
+          if (reason) {
+            console.log(`${type} aborted`, reason);
+          }
+        });
+      }
 
-              return Promise.resolve({
-                type: "history" as const,
-                ...history,
-              } as ExecutionOutboundResult);
-            }
-          : async (): Promise<ExecutionOutboundResult> => {
-              try {
-                const { secure, ...render } = recv(
-                  await window.pardon.render(http, ship(values), {
-                    ...postfilter(hint),
-                  }),
-                );
+      if (previous) {
+        previous.abort(undefined);
+      }
 
-                console.trace(
-                  "perf: render(durations)",
-                  render.context.durations,
-                );
+      const previewTask = (async () => {
+        await gates.preview.promise;
 
-                setSecureData((data) => ({
-                  ...data,
-                  [render.context.trace]: secure,
-                }));
+        return recv(
+          await window.pardon.preview(http, ship(values), {
+            pretty: true,
+          }),
+        );
+      })();
 
-                return {
-                  type: "request" as const,
-                  ...render,
-                };
-              } catch (error) {
-                requestGate.resolution.reject(error);
-                throw error;
-              }
-            };
+      const renderTask = (async () => {
+        await gates.render.promise;
 
-      requestGate.promise.catch((err) => {
-        if (err) console.warn("request", err);
-      });
+        setProgress("rendering");
 
-      onCleanup(() => {
-        requestGate.resolution.reject(undefined);
-      });
+        try {
+          const result = recv(
+            await window.pardon.render(http, ship(values), {
+              pretty: true,
+            }),
+          );
 
-      return Object.assign(await settle(action()), {
-        gate: requestGate,
-        execution,
-        setExecution,
-      });
-    },
+          setProgress("pending");
+
+          return result;
+        } catch (error) {
+          setProgress("errored");
+
+          throw error;
+        }
+      })();
+
+      const responseTask = (async () => {
+        await gates.response.promise;
+
+        gates.render.resolution.resolve(true);
+
+        const { handle } = await renderTask;
+
+        setProgress("inflight");
+
+        try {
+          const result = recv(await window.pardon.continue(handle));
+          setProgress("complete");
+
+          return result;
+        } catch (error) {
+          setProgress("failed");
+
+          throw error;
+        }
+      })();
+
+      return {
+        abort,
+        get progress() {
+          return progress();
+        },
+        get preview() {
+          if (history) {
+            return Promise.reject();
+          }
+
+          gates.preview.resolution.resolve(true);
+
+          return previewTask;
+        },
+        get request() {
+          if (history) {
+            return Promise.resolve({
+              http: HTTP.stringify(
+                HTTP.requestObject.fromJSON(history.outbound.request),
+              ),
+              outbound: history.outbound,
+              context: { timestamps: {}, durations: {}, ...history.context },
+              secure: undefined!,
+              handle: undefined! as string,
+              type: "history" as const,
+            });
+          }
+
+          gates.render.resolution.resolve(true);
+
+          return renderTask.then((result) => ({
+            ...result,
+            type: "request" as const,
+          }));
+        },
+        send() {
+          gates.response.resolution.resolve(true);
+        },
+        get response() {
+          if (history) {
+            return Promise.resolve({
+              ...history,
+              context: { timestamps: {}, durations: {}, ...history.context },
+              type: "history" as const,
+            });
+          }
+
+          return responseTask.then((result) => ({
+            ...result,
+            type: "response" as const,
+          }));
+        },
+      };
+    }),
   );
 }

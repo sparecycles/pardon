@@ -10,18 +10,16 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { CollectionItemInfo } from "./Collections.tsx";
+import { ComponentProps, splitProps } from "solid-js";
+import { twMerge } from "tailwind-merge";
 
-export type Filters = {
-  endpoint?: boolean;
-  other?: boolean;
-  flow?: boolean;
-};
-
-export type CollectionTreeItem = {
-  name: string;
-  key: string;
-  type: "endpoint" | "script" | "mixin" | "data" | "config" | "folder" | "flow";
-  info?: CollectionItemInfo;
-  items?: CollectionTreeItem[];
-};
+export default function Title(props: ComponentProps<"div">) {
+  const [, divProps] = splitProps(props, ["children"]);
+  return (
+    <div {...divProps} class={twMerge(divProps.class, "zen px-2 pb-2")}>
+      <span class="title flex flex-1 place-content-start border-b-1 border-current border-opacity-25">
+        {props.children}
+      </span>
+    </div>
+  );
+}

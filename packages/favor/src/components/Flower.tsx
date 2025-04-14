@@ -22,7 +22,7 @@ import {
 } from "solid-js";
 import { KV } from "pardon/formats";
 import type { FlowName } from "pardon";
-import CornerControls from "./http/CornerControls.tsx";
+import CornerControls from "./CornerControls.tsx";
 import {
   TbPlayerPauseFilled,
   TbPlayerPlayFilled,

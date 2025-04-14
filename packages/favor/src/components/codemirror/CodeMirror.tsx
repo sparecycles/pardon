@@ -46,9 +46,10 @@ export type CodeMirrorProps = CreateCodeMirrorProps & {
     createExtension: CreateExtensionFn;
     editorView: Accessor<EditorView>;
   }) => void;
-  icon?: JSX.Element;
+  overlay?: JSX.Element;
   text?: string;
   nowrap?: boolean;
+  disabled?: boolean;
 } & ComponentProps<"div">;
 
 const EnterNewlines = keymap.of([
@@ -89,7 +90,7 @@ export default function CodeMirror(props: CodeMirrorProps) {
   const [codemirrorProps, , restprops] = splitProps(
     props,
     ["value", "onModelViewUpdate", "onTransactionDispatched", "onValueChange"],
-    ["editorViewRef", "setup", "readonly", "icon"],
+    ["editorViewRef", "setup", "readonly", "overlay"],
   );
 
   const { editorView, ref, createExtension } =
@@ -130,6 +131,14 @@ export default function CodeMirror(props: CodeMirrorProps) {
     }),
   );
 
+  createExtension(() =>
+    EditorView.theme({
+      "": {
+        opacity: props.disabled ? "0.80 !important" : "1",
+      },
+    }),
+  );
+
   createEditorControlledValue(
     createMemo(() => {
       if (props.readwrite || props.readonly) {
@@ -155,7 +164,7 @@ export default function CodeMirror(props: CodeMirrorProps) {
       {...restprops}
       class={twMerge("overflow-hidden [&_.cm-editor]:size-full", props.class)}
     >
-      <Show when={props.icon}>{props.icon!}</Show>
+      <Show when={props.overlay}>{props.overlay!}</Show>
     </div>
   );
 }

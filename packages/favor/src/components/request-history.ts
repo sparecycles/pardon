@@ -101,7 +101,7 @@ const [activeTrace, updateActiveTrace] = createSignal<number>();
 export { activeTrace };
 
 export function traceCurrentRequest(
-  currentRequest: Accessor<ExecutionOutboundResult & { type: "request" }>,
+  currentRequest: Accessor<ExecutionOutboundResult>,
 ) {
   createEffect(
     on(

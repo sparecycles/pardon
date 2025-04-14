@@ -155,7 +155,7 @@ export function FileEditorSelector(props: {
       <RevealFileButton exists={file()?.exists} path={file().path} />
       <Show
         when={props.assets?.length > 1}
-        fallback={<>{props.assets[0].name}</>}
+        fallback={<>{props.assets[0]?.name}</>}
       >
         <select
           class="w-0 flex-1 rounded-md"

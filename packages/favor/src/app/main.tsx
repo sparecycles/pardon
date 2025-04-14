@@ -10,28 +10,31 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import Collections, {
+import Services, {
   CollectionItemInfo,
-} from "../components/http/Collections.tsx";
+} from "../components/collection/Services.tsx";
 import {
   batch,
   createEffect,
   createMemo,
+  createResource,
   createSelector,
   createSignal,
   Match,
   on,
   Show,
-  Suspense,
   Switch,
   VoidProps,
 } from "solid-js";
-import { EditorView } from "../components/codemirror/CodeMirror.tsx";
+import CodeMirror, {
+  EditorView,
+} from "../components/codemirror/CodeMirror.tsx";
 import Resizable from "@corvu/resizable";
 import DataInput from "../components/DataInput.tsx";
-import { executionResource } from "../signals/pardon-execution.ts";
+import { executionMemo } from "../signals/pardon-execution.ts";
 
 import {
+  CURL,
   HTTP,
   HTTPS,
   HttpsRequestStep,
@@ -42,49 +45,46 @@ import {
 import Toggle from "../components/Toggle.tsx";
 
 import {
-  TbAB,
+  TbCode,
   TbCopy,
-  TbExclamationCircle,
+  TbCopyright,
+  TbDownload,
   TbEye,
+  TbEyeClosed,
+  TbInfoCircle,
+  TbInfoOctagon,
+  TbInfoOctagonFilled,
   TbLock,
   TbLockOpen,
   TbMist,
-  TbMoodAnnoyed,
-  TbMoodConfuzed,
-  TbMoodNerd,
-  TbMoodNeutral,
-  TbMoodSadDizzy,
-  TbMoodSmile,
   TbPencil,
-  TbPlus,
-  TbQuestionMark,
+  TbReceipt,
+  TbReload,
   TbSend,
   TbSettings2,
   TbTrash,
+  TbUpload,
 } from "solid-icons/tb";
 import { manifest } from "../signals/pardon-config.ts";
-import AssetEditor from "../components/http/AssetEditor.tsx";
-import ResponsePanel from "../components/http/inbound/ResponsePanel.tsx";
+import AssetEditor from "../components/editor/AssetEditor.tsx";
 import { ConfigurationDrawer } from "../components/ConfigurationDrawer.tsx";
 import RequestHistory, {
   startTracingRequestHistory,
 } from "../components/RequestHistory.tsx";
 import MultiView from "../components/MultiView.tsx";
-import PreviewPanel from "../components/http/outbound/PreviewPanel.tsx";
 import TbInterrobang from "../components/TbInterrobang.tsx";
 import RecallSystem from "../components/RecallSystem.tsx";
-import CornerControls from "../components/http/CornerControls.tsx";
-import { displayHttp } from "../components/display-util.ts";
-import { mapObject } from "pardon/utils";
-import KeyValueCopier from "../components/KeyValueCopier.tsx";
+import CornerControls from "../components/CornerControls.tsx";
 import { makePersisted } from "@solid-primitives/storage";
-import { secureData } from "../components/secure-data.ts";
+import { secureData, setSecureData } from "../components/secure-data.ts";
 import { Text } from "@codemirror/state";
 import { persistJson } from "../util/persistence.ts";
-import Flower from "../components/Flower.tsx";
-import { FlowName } from "pardon";
 
-type SubPanelView = "history" | "editor" | "recall" | "flow";
+import { animation } from "../components/animate.ts";
+import KeyValueCopier from "../components/KeyValueCopier.tsx";
+import settle from "../util/settle.ts";
+
+void animation; // used with use:animation
 
 export default function Main(
   props: VoidProps<{
@@ -92,24 +92,13 @@ export default function Main(
   }>,
 ) {
   const [subPanelView, setSubPanelView] = makePersisted(
-    createSignal<SubPanelView>("history"),
+    createSignal<"history" | "recall" | "editor">("history"),
     { name: "view", ...persistJson },
   );
   const [redacted, setRedacted] = createSignal(true);
   const [relock, setRelock] = createSignal(true);
-  const [globalsCollapsed, setGlobalsCollapsed] = createSignal(false);
-  const [previewCollapsed, setPreviewCollapsed] = createSignal(false);
   const [includeHeaders, setIncludeHeaders] = createSignal(true);
-
-  const [lastResult, setLastResult] = makePersisted(
-    createSignal<ExecutionHistory>(),
-    { name: "result", ...persistJson },
-  );
-
-  const [scratchValues, setScratchValues] = makePersisted(
-    createSignal<Record<string, unknown>>({}),
-    { name: "scratch", ...persistJson },
-  );
+  const [curl, setCurl] = createSignal(false);
 
   const [values, setValues] = makePersisted(createSignal({}), {
     name: "values",
@@ -121,30 +110,33 @@ export default function Main(
     { name: "http", ...persistJson },
   );
 
-  const [globals, setGlobals] = makePersisted(
+  const [scratchValues, setScratchValues] = makePersisted(
     createSignal<Record<string, unknown>>({}),
-    { name: "globals", ...persistJson },
+    { name: "scratch", ...persistJson },
   );
 
-  const [globalExtra, setGlobalExtra] = makePersisted(createSignal(""), {
-    name: "globals-extra",
-    ...persistJson,
-  });
+  const [currentExecutionSource, setCurrentExecutionSource] =
+    createSignal<PardonExecutionSource>({
+      http: http(),
+      values: { ...values() },
+    });
 
-  const [source, updateSource] = createSignal<PardonExecutionSource>({
-    http: http(),
-    values: { ...globals(), ...values() },
-    comp: { ...globals(), ...values() },
-  });
+  createEffect(
+    on(
+      createMemo(() => [http(), values()] as const),
+      ([http, values]) => {
+        setCurrentExecutionSource({
+          http,
+          values,
+        });
+      },
+    ),
+  );
 
   createEffect(() => relock() && setRedacted(true));
 
   const httpInitialValue = createMemo(
     () => props.manifest.example.request ?? "",
-  );
-
-  const globalsInitialValue = createMemo(() =>
-    KV.stringify(props.manifest.example.values ?? {}, "\n", 2),
   );
 
   const [collectionItem, setCollectionItem] = createSignal<
@@ -180,6 +172,8 @@ export default function Main(
         response,
         values: {},
       },
+      endpoint: undefined!,
+      outcome: undefined!,
     });
   }
 
@@ -198,161 +192,145 @@ export default function Main(
 
   createEffect(
     on(
-      () => ({
-        http: http(),
-        values: values(),
-        globals: globals(),
-        hint: current(),
-      }),
-      ({ http, values, globals, hint }) => {
-        const combined = { ...globals, ...values };
-
-        const noEffectiveValueChange =
-          valueId(combined) === valueId(source().comp);
-
-        if (
-          (http ?? "").trim() === (source().http ?? "").trim() &&
-          noEffectiveValueChange
-        ) {
-          return;
-        }
-
-        updateSource(() => ({
-          http,
-          values: combined,
-          comp: combined,
-          hint,
-        }));
-      },
-      { defer: true },
-    ),
-  );
-
-  createEffect(
-    on(
       manifest,
       () => {
-        updateSource(({ history, values: { ...values }, ...source }) => ({
-          values,
-          ...source,
-        }));
+        setCurrentExecutionSource(
+          ({ history, values: { ...values }, ...source }) => ({
+            values,
+            ...source,
+          }),
+        );
       },
       { defer: true },
     ),
   );
 
-  const [showPreview, setShowPreview] = createSignal(false);
-  const { preview, outbound } = executionResource(source);
+  const currentExecution = executionMemo(currentExecutionSource);
 
-  const moodIcon = createMemo(() => {
-    const psettled = preview();
+  const [previewResource] = createResource(
+    currentExecution,
+    async ({ preview }) => {
+      return await settle(preview);
+    },
+  );
 
-    switch (psettled?.status) {
-      default:
-      case "rejected":
-        if (showPreview()) return <TbMoodSadDizzy />;
-        return <TbMoodConfuzed />;
-      case "fulfilled":
-        if (showPreview()) return <TbMoodNerd />;
+  const [requestResource] = createResource(
+    currentExecution,
+    async ({ request }) => {
+      return await settle(request);
+    },
+  );
 
-        switch (
-          outbound?.state != "ready" ? outbound.state : outbound().status
-        ) {
-          case "rejected":
-            return <TbMoodAnnoyed />;
-          case "fulfilled":
-            return <TbMoodSmile />;
-          default:
-          // fall through
-        }
+  const [responseResource] = createResource(
+    currentExecution,
+    async ({ response }) => {
+      return await settle(response);
+    },
+  );
+
+  createEffect(() => {
+    if (requestResource.state === "ready") {
+      const result = requestResource.latest;
+      if (result.status === "fulfilled") {
+        setSecureData((data) => ({
+          ...data,
+          [result.value.context.trace]: result.value.secure,
+        }));
+      }
     }
-
-    return <TbMoodNeutral />;
   });
 
-  const requestJSON = createMemo(() => {
-    if (showPreview()) {
-      const p = preview();
-      if (p?.status !== "fulfilled") {
-        return undefined;
+  createEffect(() => {
+    if (responseResource.state === "ready") {
+      const result = responseResource.latest;
+      if (result.status === "fulfilled") {
+        setSecureData((data) => ({
+          ...data,
+          [result.value.context.trace]: result.value.secure,
+        }));
       }
-      return HTTP.requestObject.json(HTTP.parse(p.value.http));
+    }
+  });
+
+  const requestContent = createMemo<string>((previous) => {
+    if (requestResource.state !== "ready") {
+      return previous ?? "loading";
     }
 
-    const r = outbound();
-    if (r?.status !== "fulfilled") {
-      return undefined;
+    const request = requestResource();
+    if (request.status === "rejected") {
+      switch (true) {
+        case previewResource.state === "ready" &&
+          previewResource.latest.status === "fulfilled":
+          return `
+Error rendering
+---
+${previewResource.latest.value.http}
+---
+${request.reason}`;
+        default:
+          return `Error rendering
+---
+${request.reason}          
+`;
+      }
     }
 
-    return redacted()
-      ? r.value.outbound?.request
-      : (secureData()[r.value.context.trace]?.outbound.request ??
-          r.value.outbound?.request);
+    const requestObject = HTTP.requestObject.fromJSON(
+      redacted()
+        ? request.value.outbound.request
+        : (
+            request.value.secure ??
+            secureData()[request.value.context.trace] ??
+            request.value
+          ).outbound.request,
+    );
+
+    if (curl()) {
+      return CURL.stringify(requestObject, {
+        include: includeHeaders(),
+      });
+    }
+
+    return HTTP.stringify(requestObject);
+  });
+
+  const responseContent = createMemo<string>((previous) => {
+    if (responseResource.state !== "ready") {
+      return previous ?? "loading";
+    }
+
+    const response = responseResource();
+    if (response.status === "rejected") {
+      return `Error fetching
+---
+${response.reason}          
+`;
+    }
+
+    const responseObject = HTTP.responseObject.fromJSON(
+      redacted()
+        ? response.value.inbound.response
+        : (
+            response.value.secure ??
+            secureData()[response.value.context.trace] ??
+            response.value
+          ).inbound.response,
+    );
+
+    return HTTP.responseObject.stringify({
+      ...responseObject,
+      ...(includeHeaders() ? {} : { headers: new Headers() }),
+    });
   });
 
   let httpInputEditorView: EditorView;
   let setHttpInput: (text: string) => void;
 
-  const request = createMemo(() => {
-    const settled = outbound();
-
-    if (settled?.status === "fulfilled") {
-      const display = displayHttp(settled.value.outbound.request);
-
-      if (!display) {
-        return "";
-      }
-
-      const { method, origin, pathname } = display;
-      return `${method} ${origin}${pathname}`;
-    }
-  });
-
-  const previewText = createMemo(() => {
-    switch (preview.state) {
-      case "pending":
-        return "";
-      default:
-        if (preview.latest.status === "fulfilled") {
-          return preview.latest.value.http;
-        }
-    }
-  });
-
-  const renderText = createMemo(() => {
-    if (preview.state === "pending" || preview.latest.status === "rejected") {
-      return "";
-    }
-
-    switch (outbound.state) {
-      case "refreshing":
-      case "pending":
-        return "";
-      default:
-        switch (outbound.latest.status) {
-          case "fulfilled":
-            return HTTP.stringify({
-              ...HTTP.requestObject.fromJSON(
-                redacted()
-                  ? outbound.latest.value.outbound.request
-                  : (secureData()[outbound.latest.value.context.trace]?.outbound
-                      .request ?? outbound.latest.value.outbound.request),
-              ),
-              values: undefined,
-            });
-          case "rejected":
-            return `
---- ERROR rendering ---
-${previewText()}
-`.trim();
-        }
-    }
-  });
-
   const asset = createMemo(() => collectionItem()?.id);
   const selection = createMemo(() => collectionItem()?.key);
   const current = createMemo(() => {
-    const resolved = preview.latest;
+    const resolved = previewResource.latest;
     if (resolved?.status === "fulfilled") {
       return `endpoint:${resolved.value.endpoint}`;
     }
@@ -361,27 +339,23 @@ ${previewText()}
   });
 
   function localValues(values: Record<string, unknown>) {
-    const globalValues = globals();
-
-    return mapObject(values, {
-      filter: (key, value) =>
-        valueId(globalValues[key] ?? null) !== valueId(value ?? null),
-    });
+    return values;
   }
 
   const active = createMemo(() => {
-    const resource = preview.latest;
-    if (resource?.status == "fulfilled") {
+    const result = previewResource.latest;
+    if (result?.status == "fulfilled") {
       return new Set(
-        ([resource.value.configuration.mixin].flat(1) || []).map(
+        ([result.value.configuration.mixin].flat(1) || []).map(
           (mixin) => `mixin:${mixin}`,
         ),
       );
     }
+
     return new Set<string>();
   });
 
-  function restoreFromHistory(history: ExecutionHistory) {
+  function reloadFromHistory(history: ExecutionHistory) {
     const {
       context: { ask },
     } = history;
@@ -395,17 +369,15 @@ ${previewText()}
     const historySource: PardonExecutionSource = {
       http,
       values,
-      comp: values,
       history,
     };
 
     batch(() => {
       const askHttp = HTTP.parse(ask);
 
-      updateSource({
+      setCurrentExecutionSource({
         ...historySource,
         values: askHttp.values,
-        comp: { ...globals(), ...askHttp.values },
       });
 
       setHttpInput(
@@ -417,8 +389,31 @@ ${previewText()}
     });
   }
 
+  function restoreFromHistory(history: ExecutionHistory) {
+    const {
+      [KV.unparsed]: http,
+      [KV.upto]: _upto,
+      ...values
+    } = KV.parse(history?.context?.ask, "stream");
+
+    setCurrentExecutionSource(() => ({
+      http,
+      values,
+      history,
+    }));
+  }
+
   const currentTrace = createMemo(() => {
-    const render = outbound();
+    const { history } = currentExecutionSource();
+    if (history) {
+      return Number(history.context.trace);
+    }
+
+    if (requestResource.state !== "ready") {
+      return;
+    }
+
+    const render = requestResource.latest;
     if (render?.status !== "fulfilled") {
       return;
     }
@@ -428,11 +423,30 @@ ${previewText()}
     return request.context.trace;
   });
 
-  startTracingRequestHistory(outbound);
+  startTracingRequestHistory(requestResource);
 
-  function isFlowName(id?: string): id is FlowName {
-    return id?.endsWith(".flow");
-  }
+  const requestNotReady = createMemo(() => {
+    return (
+      requestResource.state !== "ready" ||
+      requestResource().status !== "fulfilled" ||
+      currentExecution().progress !== "pending"
+    );
+  });
+
+  const requestDisabled = createMemo<boolean>((previous) => {
+    return requestResource.state !== "ready"
+      ? previous
+      : requestResource.state === "ready" &&
+          requestResource().status === "rejected";
+  });
+
+  const newRequestDisabled = createMemo<boolean>(() => {
+    return (
+      requestDisabled() ||
+      (requestResource.state === "ready" &&
+        currentExecution().progress !== "pending")
+    );
+  });
 
   return (
     <Resizable orientation="vertical">
@@ -441,92 +455,546 @@ ${previewText()}
         initialSize={0.7}
         minSize={"50px"}
       >
-        <Resizable>
-          <Resizable.Panel
-            class="flex bg-stone-200 dark:bg-stone-700"
-            initialSize={0.2}
-            minSize={0.1}
-            collapsible
-            collapsedSize={0.0}
-            maxSize={0.4}
-          >
-            {(panelProps) => {
-              createEffect(() => setGlobalsCollapsed(panelProps.collapsed));
-              createEffect(() => {
-                if (!globalsCollapsed()) {
-                  panelProps.expand("following");
+        <Resizable orientation="horizontal">
+          <Resizable.Panel initialSize={0.2}>
+            <Services
+              selection={selection()}
+              filters={{
+                endpoint: true,
+                other: false,
+                flow: false,
+              }}
+              expanded={new Set()}
+              endpoint={current()}
+              active={active()}
+              onClick={(key, info, event) => {
+                const { type, archetype: preview } = info ?? {};
+
+                setCollectionItem({ ...info, key });
+
+                if (event.metaKey) {
+                  setSubPanelView("editor");
+                } else if (type === "endpoint") {
+                  if (!http().trim()) {
+                    setHttp(preview);
+                  }
                 }
-              });
+              }}
+              onDblClick={(key, info) => {
+                const { type, archetype: preview } = info ?? {};
 
-              const desynchronized = createMemo(() =>
-                Object.keys(globals() || {}).filter(
-                  (key) => !(key in (source()?.values || {})),
-                ),
-              );
+                setCollectionItem({ ...info, key });
 
-              return (
-                <Resizable orientation="vertical">
-                  <Resizable.Panel class="flex" initialSize={0.4}>
+                if (type === "endpoint") {
+                  restoreFromHttp(preview);
+                }
+              }}
+            />
+          </Resizable.Panel>
+          <Resizable.Handle />
+          <Resizable.Panel initialSize={0.8}>
+            <Resizable orientation="vertical">
+              <Resizable.Panel
+                class="flex flex-col bg-neutral-200 dark:bg-neutral-600"
+                minSize={0.3}
+                initialSize={0.5}
+                collapsedSize={0.25}
+                collapsible
+              >
+                <Resizable>
+                  <Resizable.Panel
+                    minSize={0.1}
+                    initialSize={0.6}
+                    class="flex flex-grow-0 flex-col"
+                  >
                     <DataInput
-                      class="w-0 min-w-0 flex-1 bg-yellow-100 dark:bg-stone-700"
+                      class="w-0 min-w-full flex-1 overflow-auto bg-yellow-100 dark:bg-stone-700 [&_.cm-line]:pr-8"
+                      editorViewRef={(view) => (httpInputEditorView = view)}
+                      defaultValue={httpInitialValue()}
+                      setTextRef={(setText) => (setHttpInput = setText)}
+                      data={{
+                        values,
+                        doc: http,
+                      }}
                       nowrap
                       onDataChange={({ values, doc }) => {
-                        setGlobals(values);
-                        setGlobalExtra(doc ?? "");
+                        setCurrentExecutionSource({
+                          http: doc,
+                          values,
+                        });
                       }}
-                      defaultValue={globalsInitialValue()}
-                      data={{ values: globals, doc: globalExtra }}
-                      dragDrop={{
-                        onDragOver() {},
-                        onDrop(event) {
-                          const value =
-                            event.dataTransfer.getData("text/value");
+                      oncapture:paste={(event) => {
+                        const text = event.clipboardData.getData("text/plain");
 
-                          if (value) {
-                            const info = KV.parse(value, "object");
-                            if (info.method && info.method === "GET") {
-                              const { method, ...unget } = info;
+                        // try to delete all selected data from the doc
+                        // if the result is empty, we will apply all the
+                        // magic formatting.
+                        let { doc, selection } = httpInputEditorView.state;
+                        for (const range of [...selection.ranges].reverse()) {
+                          doc = doc.replace(
+                            range.from,
+                            range.to,
+                            Text.of([""]),
+                          );
+                        }
 
-                              setGlobals(({ method, ...globals }) => ({
-                                ...globals,
-                                ...unget,
-                              }));
-                            } else {
-                              setGlobals((globals) => ({
-                                ...globals,
-                                ...info,
-                              }));
+                        if (doc.toString().trim()) {
+                          // skip magic paste formatting,
+                          // doc not empty
+                          return;
+                        }
+
+                        if (text) {
+                          try {
+                            if (text.trim().startsWith(">>>")) {
+                              restoreFromLog(text);
+                              event.preventDefault();
+                            } else if (restoreFromHttp(text)) {
+                              event.preventDefault();
                             }
+                          } catch (error) {
+                            console.warn(
+                              "could not reformat pasted data",
+                              error,
+                            );
+                          }
+                        }
+                      }}
+                      overlay={
+                        <>
+                          <CornerControls
+                            placement="tr"
+                            flex="col"
+                            class="z-10 gap-1 bg-stone-200 p-0.5 dark:bg-slate-600"
+                            unbuttoned={["info"]}
+                            actions={{
+                              copy: () => {
+                                navigator.clipboard.writeText(
+                                  `${KV.stringify({ ...currentExecutionSource().values }, "\n", 2, "\n\n")}${http()}`,
+                                );
+                              },
+                            }}
+                            icons={{
+                              info: (
+                                <ConfigurationDrawer
+                                  class="!text-md flex bg-inherit p-0"
+                                  preview={createMemo(() => {
+                                    return previewResource?.state === "ready"
+                                      ? previewResource()
+                                      : undefined;
+                                  })()}
+                                >
+                                  <TbSettings2 />
+                                </ConfigurationDrawer>
+                              ),
+                              copy: <TbCopy />,
+                            }}
+                          />
+                        </>
+                      }
+                      dragDrop={{
+                        onDragOver(event) {
+                          const { types } = event.dataTransfer;
+                          if (
+                            types.includes("text/http") ||
+                            types.includes("text/log")
+                          ) {
+                            return true;
+                          }
+                        },
+                        onDrop(event) {
+                          const http = event.dataTransfer.getData("text/http");
 
+                          if (http) {
+                            restoreFromHttp(http);
                             event.preventDefault();
+                            return;
+                          }
+
+                          const log = event.dataTransfer.getData("text/log");
+
+                          if (log) {
+                            restoreFromLog(log);
+                            event.preventDefault();
+                            return;
                           }
                         },
                       }}
-                      icon={
-                        <>
-                          <Show when={desynchronized()?.length}>
-                            <CornerControls
-                              placement="tr"
-                              class="p-0.5"
-                              unbuttoned={["alert"]}
-                              icons={{
-                                alert: (
-                                  <span class="smoothed-backdrop z-10 [&::after]:bg-[#DD660070] [&::after]:backdrop-blur-[1px]">
-                                    <TbExclamationCircle />
-                                  </span>
-                                ),
-                              }}
-                            />
-                          </Show>
-                          {/* without this span the Show takes out the entire DataInput! (solidJS bug) */}
-                          <span />
-                        </>
-                      }
                     />
                   </Resizable.Panel>
-                  <Resizable.Handle />
-                  <Resizable.Panel initialSize={0.6} class="flex w-0 min-w-0">
-                    <div class="flex w-0 min-w-0 flex-1 overflow-hidden">
+                </Resizable>
+              </Resizable.Panel>
+              <Resizable.Handle />
+              <Resizable.Panel class="flex flex-col">
+                {() => {
+                  return (
+                    <>
+                      <div class="flex size-0 min-h-full min-w-full flex-row">
+                        <MultiView
+                          view={"outbound"}
+                          controls={{
+                            preview: <TbCode />,
+                            outbound: <TbUpload />,
+                            inbound: <TbDownload />,
+                            values: <TbReceipt />,
+                          }}
+                          disabled={{
+                            preview: Boolean(currentExecutionSource().history),
+                            inbound:
+                              !currentExecutionSource().history &&
+                              (responseResource.state !== "ready" ||
+                                responseResource().status !== "fulfilled"),
+                            values:
+                              !currentExecutionSource().history &&
+                              (responseResource.state !== "ready" ||
+                                responseResource().status !== "fulfilled"),
+                          }}
+                          class="flex size-full flex-col"
+                        >
+                          {([view, setView]) => {
+                            const requestUri = createMemo(() => {
+                              var rendered =
+                                requestResource.latest ??
+                                previewResource.latest;
+                              if (rendered?.status === "fulfilled") {
+                                const {
+                                  method,
+                                  origin,
+                                  pathname,
+                                  searchParams,
+                                } = HTTP.parse(rendered.value.http);
+
+                                return {
+                                  method,
+                                  uri: `${origin}${pathname}${searchParams}`,
+                                };
+                              }
+
+                              return { method: null, uri: "" };
+                            });
+
+                            const currentPreview = createMemo(
+                              (previousRequest: string) => {
+                                if (previewResource.state !== "ready") {
+                                  if (
+                                    previewResource.state === "refreshing" ||
+                                    previewResource.state === "pending"
+                                  ) {
+                                    return previousRequest ?? "";
+                                  }
+
+                                  return "";
+                                }
+
+                                const previewResult = previewResource();
+                                if (previewResult.status === "fulfilled") {
+                                  return previewResult.value.http;
+                                }
+
+                                try {
+                                  const { action, step, stack } = JSON.parse(
+                                    previewResult.reason,
+                                  );
+                                  if (step === "sync") {
+                                    return previousRequest ?? "";
+                                  }
+                                  return `${action}@${step}\n${stack}`;
+                                } catch (oops) {
+                                  void oops;
+                                  return String(previewResult.reason);
+                                }
+                              },
+                            );
+
+                            const currentRequest = createMemo(
+                              (previousRequest: string) => {
+                                if (requestResource.state !== "ready") {
+                                  if (
+                                    requestResource.state === "refreshing" ||
+                                    requestResource.state === "pending"
+                                  ) {
+                                    return previousRequest ?? "";
+                                  }
+
+                                  return "";
+                                }
+
+                                const outboundResult = requestResource();
+                                if (outboundResult.status === "fulfilled") {
+                                  const requestObject =
+                                    HTTP.requestObject.fromJSON({
+                                      ...(redacted()
+                                        ? outboundResult.value.outbound.request
+                                        : (
+                                            outboundResult.value.secure ??
+                                            secureData()[
+                                              outboundResult.value.context.trace
+                                            ] ??
+                                            outboundResult.value
+                                          ).outbound.request),
+                                      values: {},
+                                    });
+
+                                  if (curl()) {
+                                    return CURL.stringify(requestObject, {
+                                      include: includeHeaders(),
+                                    });
+                                  }
+
+                                  return HTTP.stringify(requestObject);
+                                }
+
+                                try {
+                                  const { action, step, stack } = JSON.parse(
+                                    outboundResult.reason,
+                                  );
+                                  if (step === "sync") {
+                                    return previousRequest ?? "";
+                                  }
+                                  return `${action}@${step}\n${stack}`;
+                                } catch (oops) {
+                                  void oops;
+                                  return String(outboundResult.reason);
+                                }
+                              },
+                            );
+
+                            return (
+                              <>
+                                <div class="flex w-full min-w-0 flex-initial flex-row gap-1 p-2 pr-8">
+                                  <MultiView.Controls class="aspect-square flex-initial p-1 text-xl [&.multiview-selected]:bg-lime-400 [&.multiview-selected]:dark:bg-cyan-500" />
+                                  <button
+                                    class="w-0 flex-1 border-1 border-gray-300 bg-gray-400 bg-transparent px-2 py-0 text-start light:text-neutral-700 dark:text-neutral-200 disabled:dark:text-neutral-400"
+                                    disabled={newRequestDisabled()}
+                                    classList={{
+                                      "light:bg-orange-300 dark:bg-orange-900":
+                                        ["POST", "PUT", "DELETE"].includes(
+                                          requestUri().method,
+                                        ),
+                                      "light:bg-green-300 dark:bg-green-900": [
+                                        "GET",
+                                        "HEAD",
+                                        "OPTIONS",
+                                      ].includes(requestUri().method),
+                                    }}
+                                    onClick={() => {
+                                      if (requestNotReady()) {
+                                        return;
+                                      }
+
+                                      currentExecution()?.send();
+                                      setView((tab) =>
+                                        tab === "outbound" ? "inbound" : tab,
+                                      );
+                                    }}
+                                  >
+                                    <div class="flex flex-row place-content-start gap-2 font-mono">
+                                      <span>{requestUri().method}</span>
+                                      <span class="my-1 w-[1px] bg-current"></span>
+                                      <span class="overflow-hidden overflow-ellipsis whitespace-nowrap">
+                                        {requestUri().uri}
+                                      </span>
+                                      <Show
+                                        when={
+                                          responseResource.state === "ready" &&
+                                          responseResource.latest.status ===
+                                            "fulfilled"
+                                        }
+                                      >
+                                        <span class="flex-1 text-end light:text-black dark:text-white">
+                                          {responseResource.state === "ready" &&
+                                          responseResource.latest.status ===
+                                            "fulfilled"
+                                            ? String(
+                                                responseResource.latest.value
+                                                  .inbound.response.status,
+                                              )
+                                            : "???"}
+                                        </span>
+                                      </Show>
+                                    </div>
+                                  </button>
+
+                                  <button
+                                    class="ml-1.5 aspect-square flex-initial p-1 text-xl"
+                                    onclick={() =>
+                                      batch(() => {
+                                        const { http, values } =
+                                          currentExecutionSource();
+
+                                        setHttp(http);
+                                        setValues({ ...values });
+
+                                        setView((view) => {
+                                          if (view === "inbound") {
+                                            return "outbound";
+                                          }
+                                          return view;
+                                        });
+                                      })
+                                    }
+                                  >
+                                    <Switch
+                                      fallback={
+                                        <span
+                                          use:animation={[
+                                            "animate-cw-spin",
+                                            () => requestResource?.loading,
+                                          ]}
+                                          class="smoothed-backdrop !bg-opacity-50"
+                                        >
+                                          <TbReload />
+                                        </span>
+                                      }
+                                    >
+                                      <Match
+                                        when={currentExecutionSource().history}
+                                      >
+                                        <TbPencil />
+                                      </Match>
+                                    </Switch>
+                                  </button>
+                                </div>
+                                <Switch>
+                                  <Match when={view() == "preview"}>
+                                    <CodeMirror
+                                      readonly
+                                      nowrap
+                                      value={currentPreview()}
+                                      class="flex-1 [&_.cm-content]:pr-6"
+                                    />
+                                  </Match>
+                                  <Match when={view() == "outbound"}>
+                                    <CodeMirror
+                                      readonly
+                                      nowrap
+                                      value={currentRequest()}
+                                      disabled={requestDisabled()}
+                                      class="flex-1 [&_.cm-content]:pr-6"
+                                    />
+                                  </Match>
+                                  <Match when={view() == "inbound"}>
+                                    <CodeMirror
+                                      value={responseContent()}
+                                      readonly
+                                      nowrap
+                                      class="flex-1 [&_.cm-content]:pr-6"
+                                    />
+                                  </Match>
+                                  <Match when={view() == "values"}>
+                                    <KeyValueCopier
+                                      class="p-1"
+                                      data={
+                                        responseResource.latest.status ===
+                                        "fulfilled"
+                                          ? responseResource.latest.value
+                                              .inbound.values
+                                          : {}
+                                      }
+                                    />
+                                  </Match>
+                                </Switch>
+                              </>
+                            );
+                          }}
+                        </MultiView>
+                        <CornerControls
+                          class="z-10 gap-1 bg-gray-300 p-0.5 dark:bg-gray-600"
+                          placement="tr"
+                          flex="col"
+                          actions={{
+                            redacted: () => setRedacted((value) => !value),
+                            copy() {
+                              navigator.clipboard.writeText(requestContent());
+                            },
+                            curl: () => setCurl((value) => !value),
+                            include: () => setIncludeHeaders((value) => !value),
+                          }}
+                          icons={{
+                            redacted: redacted() ? <TbEyeClosed /> : <TbEye />,
+                            curl: curl() ? <TbCopyright /> : <TbSend />,
+                            include: includeHeaders() ? (
+                              <TbInfoCircle />
+                            ) : (
+                              <span class="relative flex">
+                                <TbInfoOctagon class="z-10" />
+                                <TbInfoOctagonFilled class="absolute text-red-300 dark:text-red-800" />
+                              </span>
+                            ),
+                            copy: <TbCopy />,
+                          }}
+                          disabled={{
+                            redacted: relock(),
+                            copy:
+                              requestResource.latest?.status !== "fulfilled",
+                          }}
+                        />
+                      </div>
+                    </>
+                  );
+                }}
+              </Resizable.Panel>
+            </Resizable>
+          </Resizable.Panel>
+        </Resizable>
+      </Resizable.Panel>
+      <Resizable.Handle />
+      <Resizable.Panel initialSize={0.3} minSize={"100px"}>
+        <MultiView
+          view={subPanelView()}
+          onChange={setSubPanelView}
+          controls={
+            {
+              history: <TbMist />,
+              recall: <TbInterrobang />,
+              scratch: <TbReceipt />,
+              editor: <TbPencil />,
+            } as const
+          }
+          class="mih-h-0 size-full"
+        >
+          {([view]) => (
+            <div class="relative flex size-full min-h-0 flex-1 flex-row">
+              <div class="flex min-h-0 flex-col gap-1 border-r-1 border-neutral-300 p-1 dark:border-neutral-500">
+                <MultiView.Controls class="flex flex-initial flex-col p-1 text-xl [&.multiview-selected]:bg-lime-400 [&.multiview-selected]:dark:bg-cyan-500" />
+                <Toggle
+                  class="relative mt-auto bg-inherit p-1 text-xl mix-blend-normal dark:active:!bg-neutral-500"
+                  onChange={setRelock}
+                  value={relock()}
+                >
+                  {(props) => (
+                    <>
+                      {props.value ? (
+                        <TbLock class="scale-150 dark:text-neutral-400" />
+                      ) : (
+                        <TbLockOpen class="scale-150 dark:text-neutral-400" />
+                      )}
+                      <TbEye class="absolute bottom-[-1px] scale-75" />
+                    </>
+                  )}
+                </Toggle>
+              </div>
+              <Resizable>
+                <Resizable.Panel initialSize={0.8} class="flex">
+                  <Switch>
+                    <Match when={view() === "editor"}>
+                      <AssetEditor id={asset()} />
+                    </Match>
+                    <Match when={view() == "history"}>
+                      <RequestHistory
+                        onRestore={restoreFromHistory}
+                        onReload={reloadFromHistory}
+                        isCurrent={createSelector(currentTrace)}
+                      />
+                    </Match>
+                    <Match when={view() == "recall"}>
+                      <RecallSystem
+                        onRestore={restoreFromHistory}
+                        onReload={reloadFromHistory}
+                        isCurrent={createSelector(currentTrace)}
+                      />
+                    </Match>
+                    <Match when={view() === "scratch"}>
                       <KeyValueCopier
                         class="bg-neutral-200 p-1 dark:bg-stone-800"
                         data={scratchValues()}
@@ -603,355 +1071,11 @@ ${previewText()}
                           </div>
                         }
                       />
-                    </div>
-                  </Resizable.Panel>
-                </Resizable>
-              );
-            }}
-          </Resizable.Panel>
-          <Resizable.Handle />
-          <Resizable.Panel initialSize={0.8}>
-            <Resizable orientation="vertical">
-              <Resizable.Panel
-                class="flex flex-col bg-neutral-200 dark:bg-neutral-600"
-                minSize={0.3}
-                initialSize={0.5}
-                collapsedSize={0.25}
-                collapsible
-              >
-                <Resizable>
-                  <Resizable.Panel
-                    minSize={0.25}
-                    initialSize={0.6}
-                    class="flex"
-                  >
-                    <DataInput
-                      class="w-0 flex-1 overflow-auto bg-yellow-100 dark:bg-stone-700 [&_.cm-line]:pr-8"
-                      editorViewRef={(view) => (httpInputEditorView = view)}
-                      defaultValue={httpInitialValue()}
-                      setTextRef={(setText) => (setHttpInput = setText)}
-                      data={{
-                        values,
-                        doc: http,
-                      }}
-                      nowrap
-                      onDataChange={({ values, doc }) => {
-                        setHttp(doc);
-                        setValues(values);
-                      }}
-                      oncapture:paste={(event) => {
-                        const text = event.clipboardData.getData("text/plain");
-
-                        // try to delete all selected data from the doc
-                        // if the result is empty, we will apply all the
-                        // magic formatting.
-                        let { doc, selection } = httpInputEditorView.state;
-                        for (const range of [...selection.ranges].reverse()) {
-                          doc = doc.replace(
-                            range.from,
-                            range.to,
-                            Text.of([""]),
-                          );
-                        }
-
-                        if (doc.toString().trim()) {
-                          // skip magic paste formatting,
-                          // doc not empty
-                          return;
-                        }
-
-                        if (text) {
-                          try {
-                            if (text.trim().startsWith(">>>")) {
-                              restoreFromLog(text);
-                              event.preventDefault();
-                            } else if (restoreFromHttp(text)) {
-                              event.preventDefault();
-                            }
-                          } catch (error) {
-                            console.warn(
-                              "could not reformat pasted data",
-                              error,
-                            );
-                          }
-                        }
-                      }}
-                      icon={
-                        <>
-                          <Show when={previewCollapsed()}>
-                            <CornerControls
-                              placement="rr"
-                              class="corvu-handle-colors z-10 gap-1 bg-current [&:has(button:active)_svg]:text-neutral-500 dark:[&:has(button:active)_svg]:text-white [&_button]:active:!bg-inherit"
-                              actions={{
-                                preview() {
-                                  setPreviewCollapsed(false);
-                                },
-                              }}
-                              icons={{
-                                preview: (
-                                  <TbSend class="root-color rotate-45 bg-transparent" />
-                                ),
-                              }}
-                            />
-                          </Show>
-                          <CornerControls
-                            placement="tr"
-                            flex="col"
-                            class="z-10 gap-1 bg-stone-200 p-0.5 dark:bg-slate-600"
-                            unbuttoned={["info"]}
-                            actions={{
-                              mood: () => setShowPreview((show) => !show),
-                              copy: () => {
-                                navigator.clipboard.writeText(
-                                  `${KV.stringify({ ...source().values }, "\n", 2, "\n\n")}${http()}`,
-                                );
-                              },
-                            }}
-                            icons={{
-                              mood: (
-                                <Suspense fallback={<TbQuestionMark />}>
-                                  {moodIcon()}
-                                </Suspense>
-                              ),
-                              info: (
-                                <ConfigurationDrawer
-                                  class="!text-md flex bg-inherit p-0"
-                                  preview={createMemo(() => {
-                                    const p = preview();
-                                    return p?.status === "fulfilled"
-                                      ? p.value
-                                      : undefined;
-                                  })()}
-                                >
-                                  <TbSettings2 />
-                                </ConfigurationDrawer>
-                              ),
-                              copy: <TbCopy />,
-                            }}
-                          />
-                          <Show when={globalsCollapsed()}>
-                            <CornerControls
-                              placement="ll"
-                              flex="col"
-                              class="corvu-handle-colors z-10 gap-1 bg-current [&:has(button:active)_svg]:text-neutral-500 dark:[&:has(button:active)_svg]:text-white [&_button]:active:!bg-inherit"
-                              actions={{
-                                collection: () => setGlobalsCollapsed(false),
-                              }}
-                              icons={{
-                                collection: (
-                                  <TbPlus class="root-color bg-transparent" />
-                                ),
-                              }}
-                            />
-                          </Show>
-                        </>
-                      }
-                      dragDrop={{
-                        onDragOver(event) {
-                          const { types } = event.dataTransfer;
-                          if (
-                            types.includes("text/http") ||
-                            types.includes("text/log")
-                          ) {
-                            return true;
-                          }
-                        },
-                        onDrop(event) {
-                          const http = event.dataTransfer.getData("text/http");
-
-                          if (http) {
-                            restoreFromHttp(http);
-                            event.preventDefault();
-                            return;
-                          }
-
-                          const log = event.dataTransfer.getData("text/log");
-
-                          if (log) {
-                            restoreFromLog(log);
-                            event.preventDefault();
-                            return;
-                          }
-                        },
-                      }}
-                    />
-                  </Resizable.Panel>
-                  <Resizable.Handle />
-                  <Resizable.Panel
-                    class="flex flex-1"
-                    minSize={0.1}
-                    collapsedSize={0}
-                    initialSize={0.4}
-                    collapsible
-                  >
-                    {(panelProps) => {
-                      createEffect(() =>
-                        setPreviewCollapsed(panelProps.collapsed),
-                      );
-                      createEffect(() => {
-                        if (!previewCollapsed()) {
-                          panelProps.expand("preceding");
-                        }
-                      });
-                      return (
-                        <PreviewPanel
-                          relock={relock()}
-                          redacted={redacted()}
-                          setRedacted={setRedacted}
-                          headers={includeHeaders()}
-                          setHeaders={setIncludeHeaders}
-                          preview={preview}
-                          outbound={outbound}
-                          showPreview={showPreview()}
-                          request={requestJSON()}
-                          httpInputEditorView={httpInputEditorView}
-                          previewText={previewText()}
-                          renderText={renderText()}
-                          text="10pt"
-                          resetRequest={() => {
-                            batch(() => {
-                              updateSource(({ history, ...source }) => ({
-                                ...source,
-                                values: { ...globals(), ...source.values },
-                                comp: { ...globals(), ...source.values },
-                              }));
-                              setHttp(() => source().http);
-                              setValues(() =>
-                                localValues({ ...source().values }),
-                              );
-                            });
-                          }}
-                        />
-                      );
-                    }}
-                  </Resizable.Panel>
-                </Resizable>
-              </Resizable.Panel>
-              <Resizable.Handle />
-              <Resizable.Panel class="flex flex-col">
-                <ResponsePanel
-                  outbound={outbound()}
-                  redacted={redacted()}
-                  request={request()}
-                  include={includeHeaders()}
-                  lastResult={lastResult()}
-                  setLastResult={setLastResult}
-                />
-              </Resizable.Panel>
-            </Resizable>
-          </Resizable.Panel>
-        </Resizable>
-      </Resizable.Panel>
-      <Resizable.Handle />
-      <Resizable.Panel initialSize={0.3} minSize={"175px"}>
-        <MultiView<SubPanelView>
-          value={subPanelView() as SubPanelView}
-          onChange={setSubPanelView}
-          class="[&>.multiview-controls]:border-r-1 [&>.multiview-controls]:border-neutral-300 [&>.multiview-controls]:p-1 [&>.multiview-controls]:dark:border-neutral-500"
-          controls={(value) => {
-            return (
-              <div class="flex flex-1 flex-col gap-1">
-                <MultiView.Controls
-                  view={value}
-                  class="p-1 text-xl [&.multiview-selected]:bg-lime-400 [&.multiview-selected]:dark:bg-cyan-500"
-                  controls={
-                    {
-                      history: <TbMist />,
-                      flow: <TbAB />,
-                      editor: <TbPencil />,
-                      recall: <TbInterrobang />,
-                    } as const
-                  }
-                />
-                <Toggle
-                  class="relative mt-auto bg-inherit p-1 text-xl mix-blend-normal dark:active:!bg-neutral-500"
-                  onChange={setRelock}
-                  value={relock()}
-                >
-                  {(props) => (
-                    <>
-                      {props.value ? (
-                        <TbLock class="scale-150 dark:text-neutral-400" />
-                      ) : (
-                        <TbLockOpen class="scale-150 dark:text-neutral-400" />
-                      )}
-                      <TbEye class="absolute bottom-[-1px] scale-75" />
-                    </>
-                  )}
-                </Toggle>
-              </div>
-            );
-          }}
-        >
-          {(props) => (
-            <Resizable>
-              <Resizable.Panel initialSize={0.2}>
-                <Collections
-                  selection={selection()}
-                  filters={{
-                    endpoint: true,
-                    other: props.value === "editor",
-                    flow: props.value === "flow",
-                  }}
-                  expanded={new Set()}
-                  endpoint={current()}
-                  active={active()}
-                  onClick={(key, info, event) => {
-                    const { type, archetype: preview } = info ?? {};
-
-                    setCollectionItem({ ...info, key });
-
-                    if (event.metaKey) {
-                      setSubPanelView("editor");
-                    } else if (type === "endpoint") {
-                      if (!http().trim()) {
-                        setHttp(preview);
-                      }
-                    }
-                  }}
-                  onDblClick={(key, info) => {
-                    const { type, archetype: preview } = info ?? {};
-
-                    setCollectionItem({ ...info, key });
-
-                    if (type === "endpoint") {
-                      restoreFromHttp(preview);
-                    }
-                  }}
-                />
-              </Resizable.Panel>
-              <Resizable.Handle />
-              <Resizable.Panel initialSize={0.8} class="flex">
-                <Switch>
-                  <Match when={props.value === "editor"}>
-                    <AssetEditor id={asset()} />
-                  </Match>
-                  <Match
-                    when={
-                      props.value == "flow" && isFlowName(collectionItem()?.id)
-                    }
-                  >
-                    <Flower
-                      flow={collectionItem()?.id as FlowName}
-                      input={globals()}
-                      output={setScratchValues}
-                    />
-                  </Match>
-                  <Match when={props.value == "history"}>
-                    <RequestHistory
-                      onRestore={restoreFromHistory}
-                      isCurrent={createSelector(currentTrace)}
-                    />
-                  </Match>
-                  <Match when={props.value == "recall"}>
-                    <RecallSystem
-                      onRestore={restoreFromHistory}
-                      isCurrent={createSelector(currentTrace)}
-                    />
-                  </Match>
-                </Switch>
-              </Resizable.Panel>
-            </Resizable>
+                    </Match>
+                  </Switch>
+                </Resizable.Panel>
+              </Resizable>
+            </div>
           )}
         </MultiView>
       </Resizable.Panel>

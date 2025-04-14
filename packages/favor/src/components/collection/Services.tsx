@@ -10,13 +10,13 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { createMemo, createSelector, createSignal } from "solid-js";
+import { createMemo, createSelector } from "solid-js";
 import { manifest } from "../../signals/pardon-config.ts";
 import { CollectionTreeView } from "./CollectionTreeView.tsx";
 import type { AssetSource, AssetType, AssetInfo } from "pardon/runtime";
 import { CollectionTreeItem, Filters } from "./collection-tree-types.ts";
-import { TbRefresh, TbX } from "solid-icons/tb";
-import CornerControls from "./CornerControls.tsx";
+import { TbRefresh } from "solid-icons/tb";
+import CornerControls from "../CornerControls.tsx";
 import { animation } from "../animate.ts";
 
 void animation; // used via use:animation
@@ -44,7 +44,7 @@ type CollectionsAPI = {
   findItem(key: string): CollectionTreeItem;
 };
 
-export default function Collections(props: {
+export default function Services(props: {
   children?: (collections: CollectionsAPI) => void;
   onClick?: (key: string, info: CollectionItemInfo, event: MouseEvent) => void;
   onDblClick?: (
@@ -58,7 +58,7 @@ export default function Collections(props: {
   endpoint?: string;
   filters: Filters;
 }) {
-  const collection = createMemo(() => {
+  const services = createMemo(() => {
     const {
       endpoints = {},
       assets = {},
@@ -99,6 +99,9 @@ export default function Collections(props: {
           archetype: archetype(id, asset),
         };
       })
+      .filter(({ sources }) =>
+        sources.some(({ path }) => !path.startsWith("//")),
+      )
       .reduce<AssetTree>((tree, { name, id, type, sources, archetype }) => {
         const path = name.split("/");
 
@@ -129,7 +132,7 @@ export default function Collections(props: {
   });
 
   const collectionFiles = createMemo(() => {
-    return process(collection()) as CollectionTreeItem[];
+    return process(services()) as CollectionTreeItem[];
 
     function process(tree: AssetTree) {
       return Object.entries(tree)
@@ -161,8 +164,6 @@ export default function Collections(props: {
     }
   });
 
-  const [filter, setFilter] = createSignal("");
-
   props.children?.({
     findItem(key: string) {
       function find(item: CollectionTreeItem): CollectionTreeItem[] {
@@ -175,20 +176,6 @@ export default function Collections(props: {
 
   return (
     <div class="relative flex size-full max-h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div class="m-1 flex flex-initial flex-row overflow-hidden rounded-lg">
-        <input
-          type="text"
-          class="min-w-0 flex-1 rounded-lg rounded-e-none bg-stone-300 p-1 pl-2 font-mono text-xs dark:bg-stone-600"
-          value={filter()}
-          onInput={({ target: { value } }) => setFilter(value ?? "")}
-        />
-        <button
-          class="flex-initial rounded-none bg-stone-400 p-1 text-sm active:!bg-stone-500 dark:bg-stone-500 dark:active:!bg-stone-400"
-          onClick={() => setFilter("")}
-        >
-          <TbX />
-        </button>
-      </div>
       <div class="min-h-0 flex-1 overflow-auto">
         <CollectionTreeView
           class="p-1 text-sm"
@@ -197,7 +184,6 @@ export default function Collections(props: {
             props.onDblClick?.(item.key, item.info, event)
           }
           filters={props.filters}
-          filter={filter()}
           selection={props.selection}
           selected={createSelector(() => props.selection)}
           current={createSelector(() => props.endpoint)}

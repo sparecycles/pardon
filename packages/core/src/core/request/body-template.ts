@@ -64,6 +64,7 @@ export const bodyGlobals: Record<string, any> = {
   true: true,
   null: null,
   ...encodings,
+  $: (ref: string) => referenceTemplate({ ref }),
   $bigint: <T>(x: Template<T>) => referenceTemplate<bigint>({}).$of(x).$bigint,
   $nullable: <T>(x: Template<T>) => referenceTemplate({}).$of(x).$nullable,
   $string: <T>(x: Template<T>) => referenceTemplate<string>({}).$of(x).$string,

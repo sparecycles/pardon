@@ -38,7 +38,6 @@ export function CollectionTreeView(
     selection: string;
     selected: (key: string) => boolean;
     current: (key: string) => boolean;
-    filter: string;
     filters: Filters;
     depth?: number;
     onClick: (item: CollectionTreeItem, event: MouseEvent) => void;
@@ -56,22 +55,11 @@ export function CollectionTreeView(
     "current",
     "selection",
     "item",
-    "filter",
     "filters",
     "depth",
     "onClick",
     "onDblClick",
   ]);
-
-  function filterByText(item: CollectionTreeItem, filter: string) {
-    // todo: compute this once this
-    return new RegExp(
-      filter
-        .split("")
-        .map((s) => s.replace(/[[\](){}.^$&?\\*+]/g, (match) => `\\${match}`))
-        .join(".*?"),
-    ).test(item.type + ":" + item.key);
-  }
 
   function forced(item: CollectionTreeItem) {
     return (
@@ -113,8 +101,7 @@ export function CollectionTreeView(
         return (
           forced(item) ||
           propped().find(({ key }) => key == item.key) ||
-          (filterByText(item, props.filter) &&
-            filterByType(item.type, props.filters)) ||
+          filterByType(item.type, props.filters) ||
           (item.type === "folder" && item?.items?.some(unfiltered))
         );
       }
@@ -249,7 +236,6 @@ export function CollectionTreeView(
               <CollectionTreeView
                 item={item}
                 depth={(props.depth ?? 0) + 1}
-                filter={props.filter}
                 filters={props.filters}
                 onClick={props.onClick}
                 onDblClick={props.onDblClick}

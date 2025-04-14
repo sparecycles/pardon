@@ -10,6 +10,8 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
+import { HTTP } from "../../formats/http-fmt.js";
+import { HttpsRequestStep } from "../../formats/https-fmt.js";
 import { PardonRuntime } from "../../pardon/types.js";
 import { FlowFunction, makeFlow, makeFlowIdempotent } from "./flow-core.js";
 import { compileHttpsFlow } from "./https-flow.js";
@@ -92,6 +94,10 @@ export async function loadFlows({
             request: { headers: new Headers() },
             computations: {},
             name: "",
+            source: `
+>>> inline ${endpoint.configuration.name}
+${HTTP.stringify((endpoint.layers[0].steps[0] as HttpsRequestStep).request)}
+`.trim(),
           },
         ],
       },

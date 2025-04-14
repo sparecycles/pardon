@@ -23,7 +23,6 @@ import { HTTP, JSON, KV, ResponseJSON } from "pardon/formats";
 import LoadingSplash from "./LoadingSplash.tsx";
 import { makePersisted } from "@solid-primitives/storage";
 import { RequestSummaryNode } from "./RequestSummaryTree.tsx";
-import { RequestSummaryInfoDrawerWrapper } from "./RequestHistory.tsx";
 import KeyValueCopier from "./KeyValueCopier.tsx";
 import { numericKeySort } from "../util/numeric-sort.ts";
 import { arrayIntoObject, mapObject, recv, ship } from "pardon/utils";
@@ -50,8 +49,9 @@ function qt(s: string) {
 }
 
 export default function RecallSystem(props: {
-  onRestore: (history: ExecutionHistory) => void;
-  isCurrent: (trace: number) => boolean;
+  onRestore(history: ExecutionHistory): void;
+  onReload(history: ExecutionHistory): void;
+  isCurrent(trace: number): boolean;
 }) {
   const [values, setValues] = createSignal<Record<string, unknown>>();
   const [args, setArgs] = createSignal<string[]>();
@@ -114,134 +114,133 @@ export default function RecallSystem(props: {
             }
           }}
         ></ValuesInput>
-        <RequestSummaryInfoDrawerWrapper>
-          <Suspense fallback={<LoadingSplash />}>
-            <div class="flex-1 overflow-y-scroll text-nowrap text-xs">
-              <For each={memory()}>
-                {({ http, req, res, ask, values, inbound, created_at }) => {
-                  const request = HTTP.parse(req);
+        <Suspense fallback={<LoadingSplash />}>
+          <div class="flex-1 overflow-y-scroll text-nowrap text-xs">
+            <For each={memory()}>
+              {({ http, req, res, ask, values, inbound, created_at }) => {
+                const request = HTTP.parse(req);
 
-                  const sortedValues =
-                    Object.entries(values).sort(numericKeySort);
-                  const shownValues = createMemo(() => {
-                    return sortedValues.slice(0, 1);
-                  });
+                const sortedValues =
+                  Object.entries(values).sort(numericKeySort);
+                const shownValues = createMemo(() => {
+                  return sortedValues.slice(0, 1);
+                });
 
-                  const trace = -http;
-                  const durations = {};
-                  const timestamps = {};
-                  let response: ResponseJSON;
-                  try {
-                    response = HTTP.responseObject.json(
-                      HTTP.responseObject.parse(res),
-                    );
-                  } catch (error) {
-                    console.warn("unparsable response", res, error);
-                  }
-
-                  return (
-                    <>
-                      <RequestSummaryNode
-                        expandedSet={new Set()}
-                        exapandable={sortedValues.length > 1}
-                        current={props.isCurrent(trace)}
-                        path={[-1]}
-                        trace={{
-                          trace,
-                          start: {
-                            trace,
-                            context: {
-                              ask,
-                              endpoint: {
-                                action: "",
-                                configuration: {
-                                  name: "",
-                                  path: "",
-                                  config: [],
-                                },
-                                layers: [],
-                                service: "",
-                              },
-                            },
-                            awaited: { requests: [], results: [] },
-                          },
-                          render: {
-                            trace,
-                            context: { durations, timestamps },
-                            awaited: { requests: [], results: [] },
-                            outbound: {
-                              request: HTTP.requestObject.json(request),
-                            },
-                          },
-                          result: {
-                            trace,
-                            context: { timestamps, durations },
-                            awaited: { requests: [], results: [] },
-                            inbound: {
-                              response,
-                              values: inbound,
-                              outcome: undefined,
-                            },
-                          },
-                        }}
-                        onRestore={props.onRestore}
-                        fallback={
-                          <>
-                            <For each={shownValues()}>
-                              {([scope, data]) => (
-                                <>
-                                  {scope ? (
-                                    <span class="block -skew-x-12 pt-1 text-xs">
-                                      {scope}
-                                    </span>
-                                  ) : (
-                                    <></>
-                                  )}
-                                  <KeyValueCopier
-                                    data={data}
-                                    classList={{
-                                      "ml-2": Boolean(scope),
-                                    }}
-                                  />
-                                </>
-                              )}
-                            </For>
-                            {sortedValues.length > 1 ? <>...</> : <></>}
-                          </>
-                        }
-                        note={
-                          <span class="font-mono">
-                            {formatTimestamp(created_at)}
-                          </span>
-                        }
-                      >
-                        <For each={sortedValues}>
-                          {([scope, data]) => (
-                            <>
-                              {scope ? (
-                                <span class="block -skew-x-12 pt-1 text-xs">
-                                  {scope}
-                                </span>
-                              ) : (
-                                <></>
-                              )}
-                              <KeyValueCopier
-                                data={data}
-                                classList={{
-                                  "ml-2": Boolean(scope),
-                                }}
-                              />
-                            </>
-                          )}
-                        </For>
-                      </RequestSummaryNode>
-                    </>
+                const trace = -http;
+                const durations = {};
+                const timestamps = {};
+                let response: ResponseJSON;
+                try {
+                  response = HTTP.responseObject.json(
+                    HTTP.responseObject.parse(res),
                   );
-                }}
-              </For>
-            </div>
-          </Suspense>
-        </RequestSummaryInfoDrawerWrapper>
+                } catch (error) {
+                  console.warn("unparsable response", res, error);
+                }
+
+                return (
+                  <>
+                    <RequestSummaryNode
+                      expandedSet={new Set()}
+                      exapandable={sortedValues.length > 1}
+                      current={props.isCurrent(trace)}
+                      path={[-1]}
+                      trace={{
+                        trace,
+                        start: {
+                          trace,
+                          context: {
+                            ask,
+                            endpoint: {
+                              action: "",
+                              configuration: {
+                                name: "",
+                                path: "",
+                                config: [],
+                              },
+                              layers: [],
+                              service: "",
+                            },
+                          },
+                          awaited: { requests: [], results: [] },
+                        },
+                        render: {
+                          trace,
+                          context: { durations, timestamps },
+                          awaited: { requests: [], results: [] },
+                          outbound: {
+                            request: HTTP.requestObject.json(request),
+                          },
+                        },
+                        result: {
+                          trace,
+                          context: { timestamps, durations },
+                          awaited: { requests: [], results: [] },
+                          inbound: {
+                            response,
+                            values: inbound,
+                            outcome: undefined,
+                          },
+                        },
+                      }}
+                      onRestore={props.onRestore}
+                      onReload={props.onReload}
+                      fallback={
+                        <>
+                          <For each={shownValues()}>
+                            {([scope, data]) => (
+                              <>
+                                {scope ? (
+                                  <span class="block -skew-x-12 pt-1 text-xs">
+                                    {scope}
+                                  </span>
+                                ) : (
+                                  <></>
+                                )}
+                                <KeyValueCopier
+                                  data={data}
+                                  classList={{
+                                    "ml-2": Boolean(scope),
+                                  }}
+                                />
+                              </>
+                            )}
+                          </For>
+                          {sortedValues.length > 1 ? <>...</> : <></>}
+                        </>
+                      }
+                      note={
+                        <span class="font-mono">
+                          {formatTimestamp(created_at)}
+                        </span>
+                      }
+                    >
+                      <For each={sortedValues}>
+                        {([scope, data]) => (
+                          <>
+                            {scope ? (
+                              <span class="block -skew-x-12 pt-1 text-xs">
+                                {scope}
+                              </span>
+                            ) : (
+                              <></>
+                            )}
+                            <KeyValueCopier
+                              data={data}
+                              classList={{
+                                "ml-2": Boolean(scope),
+                              }}
+                            />
+                          </>
+                        )}
+                      </For>
+                    </RequestSummaryNode>
+                  </>
+                );
+              }}
+            </For>
+          </div>
+        </Suspense>
       </Resizable.Panel>
     </Resizable>
   );
