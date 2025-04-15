@@ -76,7 +76,7 @@ import TbInterrobang from "../components/TbInterrobang.tsx";
 import RecallSystem from "../components/RecallSystem.tsx";
 import CornerControls from "../components/CornerControls.tsx";
 import { makePersisted } from "@solid-primitives/storage";
-import { secureData, setSecureData } from "../components/secure-data.ts";
+import { secureData } from "../components/secure-data.ts";
 import { Text } from "@codemirror/state";
 import { persistJson } from "../util/persistence.ts";
 
@@ -227,30 +227,6 @@ export default function Main(
       return await settle(response);
     },
   );
-
-  createEffect(() => {
-    if (requestResource.state === "ready") {
-      const result = requestResource.latest;
-      if (result.status === "fulfilled") {
-        setSecureData((data) => ({
-          ...data,
-          [result.value.context.trace]: result.value.secure,
-        }));
-      }
-    }
-  });
-
-  createEffect(() => {
-    if (responseResource.state === "ready") {
-      const result = responseResource.latest;
-      if (result.status === "fulfilled") {
-        setSecureData((data) => ({
-          ...data,
-          [result.value.context.trace]: result.value.secure,
-        }));
-      }
-    }
-  });
 
   const requestContent = createMemo<string>((previous) => {
     if (requestResource.state !== "ready") {

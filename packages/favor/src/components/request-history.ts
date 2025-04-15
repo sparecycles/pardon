@@ -24,6 +24,7 @@ import { HistoryTree } from "./RequestSummaryTree.tsx";
 import { mapObject } from "pardon/utils";
 import { persistJson } from "../util/persistence.ts";
 import localforage from "localforage";
+import { setSecureData } from "./secure-data.ts";
 
 type TracingHookPayloads = any;
 export type Trace = {
@@ -47,6 +48,8 @@ const [history, setHistory] = makePersisted(
   },
 );
 
+setTimeout(() => console.log(history()), 1000);
+
 export function clearAllTraces() {
   setHistory(({ traces }) => ({
     traces: mapObject(traces, {
@@ -69,7 +72,11 @@ export const { traces } = createRoot(() => {
           traces: { ...traces, [trace]: { trace, start } },
         }));
       },
-      onRenderComplete(trace, { secure: _, ...render }) {
+      onRenderComplete(trace, { secure, ...render }) {
+        setSecureData((data) => ({
+          ...data,
+          [trace]: { ...data[trace], ...secure },
+        }));
         setHistory(({ traces }) => ({
           traces: { ...traces, [trace]: { ...traces[trace], render } },
         }));
@@ -79,7 +86,11 @@ export const { traces } = createRoot(() => {
           traces: { ...traces, [trace]: { ...traces[trace], sent: true } },
         }));
       },
-      onResult(trace, { secure: _, ...result }) {
+      onResult(trace, { secure, ...result }) {
+        setSecureData((data) => ({
+          ...data,
+          [trace]: { ...data[trace], ...secure },
+        }));
         setHistory(({ traces }) => ({
           traces: { ...traces, [trace]: { ...traces[trace], result } },
         }));
