@@ -21,7 +21,6 @@ import {
   splitProps,
   JSX,
 } from "solid-js";
-import { TbChevronRight, TbCopy, TbPencil, TbTrash } from "solid-icons/tb";
 import { twMerge } from "tailwind-merge";
 import Toggle from "./Toggle.tsx";
 import HttpMethodIcon from "./HttpMethodIcon.tsx";
@@ -139,7 +138,7 @@ export function RequestSummaryNode(props: {
             onChange={setExpanded}
           >
             {(props) => (
-              <TbChevronRight
+              <IconTablerChevronRight
                 class="relative inline rotate-0 transition-transform duration-200"
                 classList={{
                   "rotate-90": props.value,
@@ -240,7 +239,7 @@ export function RequestSummary(
                 when={props.trace?.sent}
                 fallback={
                   <>
-                    <TbPencil class="inline-block flex-1 text-center" />
+                    <IconTablerPencil class="inline-block flex-1 text-center" />
                   </>
                 }
               >
@@ -282,7 +281,7 @@ ${HTTP.responseObject.stringify(HTTP.responseObject.fromJSON(inbound.response))}
             );
           }}
         >
-          <TbCopy />
+          <IconTablerCopy />
         </button>
         <Show when={props.clearTrace}>
           <button
@@ -292,7 +291,7 @@ ${HTTP.responseObject.stringify(HTTP.responseObject.fromJSON(inbound.response))}
               props.clearTrace?.(props.trace.trace);
             }}
           >
-            <TbTrash />
+            <IconTablerTrash />
           </button>
         </Show>
       </div>

@@ -10,14 +10,14 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { createMemo, createSelector } from "solid-js";
+import { createMemo, createSelector, For } from "solid-js";
 import { manifest } from "../../signals/pardon-config.ts";
 import { CollectionTreeView } from "./CollectionTreeView.tsx";
 import type { AssetSource, AssetType, AssetInfo } from "pardon/runtime";
 import { CollectionTreeItem, Filters } from "./collection-tree-types.ts";
-import { TbRefresh } from "solid-icons/tb";
 import CornerControls from "../CornerControls.tsx";
 import { animation } from "../animate.ts";
+import Title from "../Title.tsx";
 
 void animation; // used via use:animation
 
@@ -131,7 +131,7 @@ export default function Services(props: {
       }, {});
   });
 
-  const collectionFiles = createMemo(() => {
+  const collection = createMemo(() => {
     return process(services()) as CollectionTreeItem[];
 
     function process(tree: AssetTree) {
@@ -170,36 +170,47 @@ export default function Services(props: {
         if (item.key === key) return [item];
         return item.type === "folder" ? item.items.flatMap(find) : [];
       }
-      return collectionFiles().flatMap(find)[0];
+      return collection().flatMap(find)[0];
     },
   });
 
   return (
     <div class="relative flex size-full max-h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div class="min-h-0 flex-1 overflow-auto">
-        <CollectionTreeView
-          class="p-1 text-sm"
-          onClick={(item, event) => props.onClick?.(item.key, item.info, event)}
-          onDblClick={(item, event) =>
-            props.onDblClick?.(item.key, item.info, event)
-          }
-          filters={props.filters}
-          selection={props.selection}
-          selected={createSelector(() => props.selection)}
-          current={createSelector(() => props.endpoint)}
-          item={{
-            name: "collection",
-            type: "folder",
-            key: "folder:collection",
-            items: collectionFiles(),
-            info: {
-              id: "collection",
-              archetype: "",
-            },
+        <For each={collection()}>
+          {(item) => {
+            return (
+              <>
+                <Title>{item.name}</Title>
+                <CollectionTreeView
+                  class="p-1 text-sm"
+                  onClick={(item, event) =>
+                    props.onClick?.(item.key, item.info, event)
+                  }
+                  onDblClick={(item, event) =>
+                    props.onDblClick?.(item.key, item.info, event)
+                  }
+                  filters={props.filters}
+                  selection={props.selection}
+                  selected={createSelector(() => props.selection)}
+                  current={createSelector(() => props.endpoint)}
+                  item={{
+                    name: "collection",
+                    type: "folder",
+                    key: "folder:collection",
+                    items: item.items,
+                    info: {
+                      id: "collection",
+                      archetype: "",
+                    },
+                  }}
+                  expanded={props.expanded}
+                  active={props.active}
+                />
+              </>
+            );
           }}
-          expanded={props.expanded}
-          active={props.active}
-        />
+        </For>
       </div>
 
       <CornerControls
@@ -224,7 +235,7 @@ export default function Services(props: {
                 use:animation={["animate-ccw-spin", () => manifest.loading]}
                 class="smoothed-backdrop transition-colors duration-300 [&::after]:backdrop-blur-[0.7px]"
               >
-                <TbRefresh />
+                <IconTablerRefresh />
               </span>
             </button>
           ),

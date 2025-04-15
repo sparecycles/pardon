@@ -11,7 +11,6 @@ governing permissions and limitations under the License.
 */
 
 import { cleanObject, JSON, KV } from "pardon/formats";
-import { TbCopy, TbPlus } from "solid-icons/tb";
 import { ComponentProps, For, JSX, splitProps } from "solid-js";
 import { twMerge } from "tailwind-merge";
 
@@ -44,10 +43,10 @@ export default function KeyValueCopier(
         </For>
       </div>
       <span class="copy-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
-        <TbCopy />
+        <IconTablerCopy />
       </span>
       <span class="value-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
-        <TbPlus />
+        <IconTablerPlus />
       </span>
       {props.icon}
     </div>

@@ -23,7 +23,6 @@ import {
   splitProps,
 } from "solid-js";
 import CodeMirror from "../codemirror/CodeMirror.tsx";
-import { TbFile } from "solid-icons/tb";
 import { twMerge } from "tailwind-merge";
 
 type FileEditorAsset = {
@@ -136,7 +135,7 @@ export function RevealFileButton(props: { path: string; exists: boolean }) {
         window.pardon.shellShowFile(props.path);
       }}
     >
-      <TbFile />
+      <IconTablerFile />
     </button>
   );
 }

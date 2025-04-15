@@ -10,8 +10,6 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { TbChevronRight } from "solid-icons/tb";
-
 import {
   ComponentProps,
   For,
@@ -205,22 +203,10 @@ export function CollectionTreeView(
                 "!bg-gray-200 dark:!bg-neutral-800": isSelected(),
               }}
             >
-              <CollectionItemIcon
-                item={props.item}
-                class="borders-solid pr-1 text-xl"
-              />
-              <span>{props.item.name}</span>
-              <Show when={props.item.type === "folder"}>
-                <span class="relative aspect-square w-4">
-                  <TbChevronRight
-                    class="absolute rotate-0 transition-transform"
-                    classList={{
-                      "rotate-90": expanded(),
-                      "rotate-45": !expanded() && Boolean(propped()?.length),
-                    }}
-                  />
-                </span>
+              <Show when={expanded()} fallback={<IconTablerFolder />}>
+                <IconTablerFolderOpen />
               </Show>
+              <span>{props.item.name}</span>
             </button>
           </Show>
         </Match>

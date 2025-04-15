@@ -11,7 +11,6 @@ governing permissions and limitations under the License.
 */
 
 import { createMemo, For, createContext, Show, Accessor, on } from "solid-js";
-import { TbTrash } from "solid-icons/tb";
 import { executionMemo } from "../signals/pardon-execution.ts";
 import { RequestSummaryTree } from "./RequestSummaryTree.tsx";
 import {
@@ -112,7 +111,7 @@ export default function RequestHistory(props: {
           onClick={() => clearAllTraces()}
           disabled={unsentTrace()}
         >
-          <TbTrash />
+          <IconTablerTrash />
         </button>
       </div>
     </div>

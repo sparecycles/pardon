@@ -44,27 +44,6 @@ import {
 } from "pardon/formats";
 import Toggle from "../components/Toggle.tsx";
 
-import {
-  TbCode,
-  TbCopy,
-  TbCopyright,
-  TbDownload,
-  TbEye,
-  TbEyeClosed,
-  TbInfoCircle,
-  TbInfoOctagon,
-  TbInfoOctagonFilled,
-  TbLock,
-  TbLockOpen,
-  TbMist,
-  TbPencil,
-  TbReceipt,
-  TbReload,
-  TbSend,
-  TbSettings2,
-  TbTrash,
-  TbUpload,
-} from "solid-icons/tb";
 import { manifest } from "../signals/pardon-config.ts";
 import AssetEditor from "../components/editor/AssetEditor.tsx";
 import { ConfigurationDrawer } from "../components/ConfigurationDrawer.tsx";
@@ -72,7 +51,6 @@ import RequestHistory, {
   startTracingRequestHistory,
 } from "../components/RequestHistory.tsx";
 import MultiView from "../components/MultiView.tsx";
-import TbInterrobang from "../components/TbInterrobang.tsx";
 import RecallSystem from "../components/RecallSystem.tsx";
 import CornerControls from "../components/CornerControls.tsx";
 import { makePersisted } from "@solid-primitives/storage";
@@ -560,10 +538,10 @@ ${response.reason}
                                       : undefined;
                                   })()}
                                 >
-                                  <TbSettings2 />
+                                  <IconTablerSettings2 />
                                 </ConfigurationDrawer>
                               ),
-                              copy: <TbCopy />,
+                              copy: <IconTablerCopy />,
                             }}
                           />
                         </>
@@ -609,10 +587,10 @@ ${response.reason}
                         <MultiView
                           view={"outbound"}
                           controls={{
-                            preview: <TbCode />,
-                            outbound: <TbUpload />,
-                            inbound: <TbDownload />,
-                            values: <TbReceipt />,
+                            preview: <IconTablerCode />,
+                            outbound: <IconTablerUpload />,
+                            inbound: <IconTablerDownload />,
+                            values: <IconTablerReceipt />,
                           }}
                           disabled={{
                             preview: Boolean(currentExecutionSource().history),
@@ -819,14 +797,14 @@ ${response.reason}
                                           ]}
                                           class="smoothed-backdrop !bg-opacity-50"
                                         >
-                                          <TbReload />
+                                          <IconTablerReload />
                                         </span>
                                       }
                                     >
                                       <Match
                                         when={currentExecutionSource().history}
                                       >
-                                        <TbPencil />
+                                        <IconTablerPencil />
                                       </Match>
                                     </Switch>
                                   </button>
@@ -887,17 +865,25 @@ ${response.reason}
                             include: () => setIncludeHeaders((value) => !value),
                           }}
                           icons={{
-                            redacted: redacted() ? <TbEyeClosed /> : <TbEye />,
-                            curl: curl() ? <TbCopyright /> : <TbSend />,
+                            redacted: redacted() ? (
+                              <IconTablerEyeClosed />
+                            ) : (
+                              <IconTablerEye />
+                            ),
+                            curl: curl() ? (
+                              <IconTablerCopyright />
+                            ) : (
+                              <IconTablerSend />
+                            ),
                             include: includeHeaders() ? (
-                              <TbInfoCircle />
+                              <IconTablerInfoCircle />
                             ) : (
                               <span class="relative flex">
-                                <TbInfoOctagon class="z-10" />
-                                <TbInfoOctagonFilled class="absolute text-red-300 dark:text-red-800" />
+                                <IconTablerInfoOctagon class="z-10" />
+                                <IconTablerInfoOctagonFilled class="absolute text-red-300 dark:text-red-800" />
                               </span>
                             ),
-                            copy: <TbCopy />,
+                            copy: <IconTablerCopy />,
                           }}
                           disabled={{
                             redacted: relock(),
@@ -921,10 +907,15 @@ ${response.reason}
           onChange={setSubPanelView}
           controls={
             {
-              history: <TbMist />,
-              recall: <TbInterrobang />,
-              scratch: <TbReceipt />,
-              editor: <TbPencil />,
+              history: <IconTablerMist />,
+              recall: (
+                <div class="relative">
+                  <IconTablerQuestionMark class="absolute" />
+                  <IconTablerExclamationMark />
+                </div>
+              ),
+              scratch: <IconTablerReceipt />,
+              editor: <IconTablerPencil />,
             } as const
           }
           class="mih-h-0 size-full"
@@ -941,11 +932,11 @@ ${response.reason}
                   {(props) => (
                     <>
                       {props.value ? (
-                        <TbLock class="scale-150 dark:text-neutral-400" />
+                        <IconTablerLock class="scale-150 dark:text-neutral-400" />
                       ) : (
-                        <TbLockOpen class="scale-150 dark:text-neutral-400" />
+                        <IconTablerLockOpen class="scale-150 dark:text-neutral-400" />
                       )}
-                      <TbEye class="absolute bottom-[-1px] scale-75" />
+                      <IconTablerEye class="absolute bottom-[-1px] scale-75" />
                     </>
                   )}
                 </Toggle>
@@ -1042,7 +1033,7 @@ ${response.reason}
                                 event.stopPropagation();
                               }}
                             >
-                              <TbTrash class="pointer-events-none" />
+                              <IconTablerTrash class="pointer-events-none" />
                             </button>
                           </div>
                         }
