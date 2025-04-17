@@ -19,13 +19,9 @@ export default function HttpMethodIcon(
 ) {
   const [ourProps, iconProps] = splitProps(props, ["method"]);
   const iconClass = (colors) =>
-    twMerge(
-      "absolute top-[-190%] h-[18px] scale-[1.2]",
-      colors,
-      iconProps.class,
-    );
+    twMerge("scale-[1.3] overflow-clip w-5 h-4 pr-1", colors, iconProps.class);
   return (
-    <span class="relative inline-flex min-h-1 min-w-6">
+    <span class="w-5">
       <Switch
         fallback={
           <IconTablerSend

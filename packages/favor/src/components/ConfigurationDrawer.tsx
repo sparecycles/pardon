@@ -13,7 +13,7 @@ governing permissions and limitations under the License.
 import Drawer from "corvu/drawer";
 import { ComponentProps, ParentProps, splitProps } from "solid-js";
 
-import { executionMemo } from "../signals/pardon-execution.ts";
+import { executionMemo } from "../signals/pardon-execution-signal.ts";
 import { InfoDrawer } from "./InfoDrawer.tsx";
 
 export function ConfigurationDrawer(

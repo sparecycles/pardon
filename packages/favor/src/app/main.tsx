@@ -31,7 +31,7 @@ import CodeMirror, {
 } from "../components/codemirror/CodeMirror.tsx";
 import Resizable from "@corvu/resizable";
 import DataInput from "../components/DataInput.tsx";
-import { executionMemo } from "../signals/pardon-execution.ts";
+import { executionMemo } from "../signals/pardon-execution-signal.ts";
 
 import {
   CURL,
@@ -47,9 +47,7 @@ import Toggle from "../components/Toggle.tsx";
 import { manifest } from "../signals/pardon-config.ts";
 import AssetEditor from "../components/editor/AssetEditor.tsx";
 import { ConfigurationDrawer } from "../components/ConfigurationDrawer.tsx";
-import RequestHistory, {
-  startTracingRequestHistory,
-} from "../components/RequestHistory.tsx";
+import RequestHistory from "../components/RequestHistory.tsx";
 import MultiView from "../components/MultiView.tsx";
 import RecallSystem from "../components/RecallSystem.tsx";
 import CornerControls from "../components/CornerControls.tsx";
@@ -61,6 +59,7 @@ import { persistJson } from "../util/persistence.ts";
 import { animation } from "../components/animate.ts";
 import KeyValueCopier from "../components/KeyValueCopier.tsx";
 import settle from "../util/settle.ts";
+import { updateActiveTrace } from "../components/request-history.ts";
 
 void animation; // used with use:animation
 
@@ -93,6 +92,8 @@ export default function Main(
     { name: "scratch", ...persistJson },
   );
 
+  const [history, setHistory] = createSignal<ExecutionHistory>();
+
   const [currentExecutionSource, setCurrentExecutionSource] =
     createSignal<PardonExecutionSource>({
       http: http(),
@@ -108,10 +109,33 @@ export default function Main(
           values,
         });
       },
+      { defer: true },
     ),
   );
 
+  createEffect(
+    on(currentExecutionSource, () => {
+      setHistory(undefined);
+    }),
+  );
+
   createEffect(() => relock() && setRedacted(true));
+
+  const displayedExecutionSource = createMemo(() => {
+    const currentHistory = history();
+    if (!currentHistory) {
+      return currentExecutionSource();
+    }
+
+    const {
+      [KV.eoi]: _,
+      [KV.upto]: __,
+      [KV.unparsed]: http,
+      ...values
+    } = KV.parse(currentHistory.context.ask, "stream");
+
+    return { http, values };
+  });
 
   const httpInitialValue = createMemo(
     () => props.manifest.example.request ?? "",
@@ -135,7 +159,7 @@ export default function Main(
       status: Number(responseStep.status),
     };
 
-    restoreFromHistory({
+    setHistory({
       context: {
         trace: -1,
         ask: request,
@@ -172,18 +196,23 @@ export default function Main(
     on(
       manifest,
       () => {
-        setCurrentExecutionSource(
-          ({ history, values: { ...values }, ...source }) => ({
-            values,
-            ...source,
-          }),
-        );
+        setCurrentExecutionSource(({ values: { ...values }, ...source }) => ({
+          values,
+          ...source,
+        }));
       },
       { defer: true },
     ),
   );
 
   const currentExecution = executionMemo(currentExecutionSource);
+
+  const [contextResource] = createResource(
+    currentExecution,
+    async ({ context }) => {
+      return await settle(context);
+    },
+  );
 
   const [previewResource] = createResource(
     currentExecution,
@@ -205,6 +234,21 @@ export default function Main(
       return await settle(response);
     },
   );
+
+  function restoreFromHistory(history: ExecutionHistory) {
+    if (history && requestResource.state === "ready") {
+      const currentRequestResult = requestResource();
+      if (currentRequestResult.status === "fulfilled") {
+        const currentRequest = currentRequestResult.value;
+        if (currentRequest.context.trace === history.context.trace) {
+          setHistory(undefined);
+          return;
+        }
+      }
+    }
+
+    setHistory(history);
+  }
 
   const requestContent = createMemo<string>((previous) => {
     if (requestResource.state !== "ready") {
@@ -249,28 +293,51 @@ ${request.reason}
     return HTTP.stringify(requestObject);
   });
 
-  const responseContent = createMemo<string>((previous) => {
-    if (responseResource.state !== "ready") {
-      return previous ?? "loading";
+  const responseInbound = createMemo(() => {
+    const historical = history();
+
+    if (!historical?.inbound && responseResource.state !== "ready") {
+      return { error: "loading" };
+    }
+
+    if (historical) {
+      return historical;
     }
 
     const response = responseResource();
     if (response.status === "rejected") {
-      return `Error fetching
----
-${response.reason}          
-`;
+      return {
+        error: String(response.reason).replace(
+          /^Error: Error invoking remote method 'pardon':\s+/,
+          "",
+        ),
+      };
     }
 
-    const responseObject = HTTP.responseObject.fromJSON(
+    return response.value;
+  });
+
+  function isErrorResponse(x: any): x is { error: any } {
+    return typeof x?.error !== "undefined";
+  }
+
+  const responseContent = createMemo<string>(() => {
+    const currentInbound = responseInbound();
+    if (isErrorResponse(currentInbound)) {
+      return currentInbound.error;
+    }
+
+    const displayedResponse = (
       redacted()
-        ? response.value.inbound.response
-        : (
-            response.value.secure ??
-            secureData()[response.value.context.trace] ??
-            response.value
-          ).inbound.response,
-    );
+        ? currentInbound
+        : (secureData()[currentInbound.context.trace] ?? currentInbound)
+    )?.inbound?.response;
+
+    if (!displayedResponse) {
+      return "no response";
+    }
+
+    const responseObject = HTTP.responseObject.fromJSON(displayedResponse);
 
     return HTTP.responseObject.stringify({
       ...responseObject,
@@ -309,62 +376,14 @@ ${response.reason}
     return new Set<string>();
   });
 
-  function reloadFromHistory(history: ExecutionHistory) {
-    const {
-      context: { ask },
-    } = history;
-
-    const {
-      [KV.unparsed]: http,
-      [KV.upto]: _upto,
-      ...values
-    } = KV.parse(ask, "stream");
-
-    const historySource: PardonExecutionSource = {
-      http,
-      values,
-      history,
-    };
-
-    batch(() => {
-      const askHttp = HTTP.parse(ask);
-
-      setCurrentExecutionSource({
-        ...historySource,
-        values: askHttp.values,
-      });
-
-      setHttpInput(
-        HTTP.stringify({
-          ...askHttp,
-          values: localValues(askHttp.values),
-        }),
-      );
-    });
-  }
-
-  function restoreFromHistory(history: ExecutionHistory) {
-    const {
-      [KV.unparsed]: http,
-      [KV.upto]: _upto,
-      ...values
-    } = KV.parse(history?.context?.ask, "stream");
-
-    setCurrentExecutionSource(() => ({
-      http,
-      values,
-      history,
-    }));
-  }
-
-  const currentTrace = createMemo(() => {
-    const { history } = currentExecutionSource();
-    if (history) {
-      return Number(history.context.trace);
+  const currentTrace = createMemo((previousTrace) => {
+    const currentHistory = history();
+    if (currentHistory) {
+      return Number(currentHistory.context.trace);
     }
 
     if (requestResource.state !== "ready") {
-      return;
+      return previousTrace;
     }
 
     const render = requestResource.latest;
@@ -377,7 +396,14 @@ ${response.reason}
     return request.context.trace;
   });
 
-  startTracingRequestHistory(requestResource);
+  createMemo(() => {
+    if (contextResource.state === "ready") {
+      const contextValue = contextResource();
+      if (contextValue.status === "fulfilled") {
+        updateActiveTrace(contextValue.value?.trace);
+      }
+    }
+  });
 
   const requestNotReady = createMemo(() => {
     return (
@@ -391,14 +417,19 @@ ${response.reason}
     return requestResource.state !== "ready"
       ? previous
       : requestResource.state === "ready" &&
-          requestResource().status === "rejected";
+          (requestResource().status === "rejected" ||
+            ["inflight", "complete", "failed"].includes(
+              currentExecution()?.progress,
+            ));
   });
 
-  const newRequestDisabled = createMemo<boolean>(() => {
+  const newRequestDisabled = createMemo<boolean>((wasDisabled) => {
     return (
       requestDisabled() ||
       (requestResource.state === "ready" &&
-        currentExecution().progress !== "pending")
+      currentExecution().progress === "pending"
+        ? false
+        : wasDisabled)
     );
   });
 
@@ -593,38 +624,53 @@ ${response.reason}
                             values: <IconTablerReceipt />,
                           }}
                           disabled={{
-                            preview: Boolean(currentExecutionSource().history),
+                            preview: Boolean(history()),
                             inbound:
-                              !currentExecutionSource().history &&
-                              (responseResource.state !== "ready" ||
-                                responseResource().status !== "fulfilled"),
+                              !history() && responseResource.state !== "ready",
                             values:
-                              !currentExecutionSource().history &&
+                              !history() &&
                               (responseResource.state !== "ready" ||
                                 responseResource().status !== "fulfilled"),
                           }}
+                          defaulting={() => [
+                            "outbound",
+                            "inbound",
+                            "preview",
+                            "values",
+                          ]}
                           class="flex size-full flex-col"
                         >
                           {([view, setView]) => {
                             const requestUri = createMemo(() => {
+                              const currentHistory = history();
+                              if (currentHistory) {
+                                const { method, url } =
+                                  currentHistory.outbound.request;
+                                return { method, url };
+                              }
+
                               var rendered =
-                                requestResource.latest ??
-                                previewResource.latest;
-                              if (rendered?.status === "fulfilled") {
+                                requestResource.latest?.status === "fulfilled"
+                                  ? requestResource.latest.value
+                                  : previewResource.latest?.status ===
+                                      "fulfilled"
+                                    ? previewResource.latest.value
+                                    : null;
+                              if (rendered) {
                                 const {
                                   method,
                                   origin,
                                   pathname,
                                   searchParams,
-                                } = HTTP.parse(rendered.value.http);
+                                } = HTTP.parse(rendered.http);
 
                                 return {
                                   method,
-                                  uri: `${origin}${pathname}${searchParams}`,
+                                  url: `${origin}${pathname}${searchParams}`,
                                 };
                               }
 
-                              return { method: null, uri: "" };
+                              return { method: null, url: "" };
                             });
 
                             const currentPreview = createMemo(
@@ -645,6 +691,10 @@ ${response.reason}
                                   return previewResult.value.http;
                                 }
 
+                                if (!previewResult.reason) {
+                                  return "";
+                                }
+
                                 try {
                                   const { action, step, stack } = JSON.parse(
                                     previewResult.reason,
@@ -660,9 +710,41 @@ ${response.reason}
                               },
                             );
 
+                            const latestRequest = createMemo(() => {
+                              if (requestResource.state !== "ready") {
+                                return;
+                              }
+
+                              const request = requestResource();
+
+                              if (request.status !== "fulfilled") {
+                                const error = request.reason;
+                                return { error } as PardonExecutionRender;
+                              }
+
+                              return request.value;
+                            });
+
                             const currentRequest = createMemo(
                               (previousRequest: string) => {
-                                if (requestResource.state !== "ready") {
+                                const { outbound, context, error } =
+                                  history() ?? latestRequest() ?? {};
+
+                                if (error) {
+                                  try {
+                                    const { action, step, stack } =
+                                      JSON.parse(error);
+                                    if (step === "sync") {
+                                      return previousRequest ?? "";
+                                    }
+                                    return `${action}@${step}\n${stack}`;
+                                  } catch (oops) {
+                                    void oops;
+                                    return String(error);
+                                  }
+                                }
+
+                                if (!outbound) {
                                   if (
                                     requestResource.state === "refreshing" ||
                                     requestResource.state === "pending"
@@ -673,43 +755,23 @@ ${response.reason}
                                   return "";
                                 }
 
-                                const outboundResult = requestResource();
-                                if (outboundResult.status === "fulfilled") {
-                                  const requestObject =
-                                    HTTP.requestObject.fromJSON({
-                                      ...(redacted()
-                                        ? outboundResult.value.outbound.request
-                                        : (
-                                            outboundResult.value.secure ??
-                                            secureData()[
-                                              outboundResult.value.context.trace
-                                            ] ??
-                                            outboundResult.value
-                                          ).outbound.request),
-                                      values: {},
-                                    });
+                                const requestObject =
+                                  HTTP.requestObject.fromJSON({
+                                    ...(redacted()
+                                      ? outbound
+                                      : (secureData()[context.trace]
+                                          ?.outbound ?? outbound)
+                                    )?.request,
+                                    values: {},
+                                  });
 
-                                  if (curl()) {
-                                    return CURL.stringify(requestObject, {
-                                      include: includeHeaders(),
-                                    });
-                                  }
-
-                                  return HTTP.stringify(requestObject);
+                                if (curl()) {
+                                  return CURL.stringify(requestObject, {
+                                    include: includeHeaders(),
+                                  });
                                 }
 
-                                try {
-                                  const { action, step, stack } = JSON.parse(
-                                    outboundResult.reason,
-                                  );
-                                  if (step === "sync") {
-                                    return previousRequest ?? "";
-                                  }
-                                  return `${action}@${step}\n${stack}`;
-                                } catch (oops) {
-                                  void oops;
-                                  return String(outboundResult.reason);
-                                }
+                                return HTTP.stringify(requestObject);
                               },
                             );
 
@@ -721,7 +783,7 @@ ${response.reason}
                                     class="w-0 flex-1 border-1 border-gray-300 bg-gray-400 bg-transparent px-2 py-0 text-start light:text-neutral-700 dark:text-neutral-200 disabled:dark:text-neutral-400"
                                     disabled={newRequestDisabled()}
                                     classList={{
-                                      "light:bg-orange-300 dark:bg-orange-900":
+                                      "light:bg-orange-300 dark:bg-yellow-900":
                                         ["POST", "PUT", "DELETE"].includes(
                                           requestUri().method,
                                         ),
@@ -738,7 +800,9 @@ ${response.reason}
 
                                       currentExecution()?.send();
                                       setView((tab) =>
-                                        tab === "outbound" ? "inbound" : tab,
+                                        ["outbound", "preview"].includes(tab)
+                                          ? "inbound"
+                                          : tab,
                                       );
                                     }}
                                   >
@@ -746,18 +810,18 @@ ${response.reason}
                                       <span>{requestUri().method}</span>
                                       <span class="my-1 w-[1px] bg-current"></span>
                                       <span class="overflow-hidden overflow-ellipsis whitespace-nowrap">
-                                        {requestUri().uri}
+                                        {requestUri().url}
                                       </span>
                                       <Show
                                         when={
                                           responseResource.state === "ready" &&
-                                          responseResource.latest.status ===
+                                          responseResource.latest?.status ===
                                             "fulfilled"
                                         }
                                       >
                                         <span class="flex-1 text-end light:text-black dark:text-white">
                                           {responseResource.state === "ready" &&
-                                          responseResource.latest.status ===
+                                          responseResource.latest?.status ===
                                             "fulfilled"
                                             ? String(
                                                 responseResource.latest.value
@@ -774,7 +838,7 @@ ${response.reason}
                                     onclick={() =>
                                       batch(() => {
                                         const { http, values } =
-                                          currentExecutionSource();
+                                          displayedExecutionSource();
 
                                         setHttp(http);
                                         setValues({ ...values });
@@ -801,9 +865,7 @@ ${response.reason}
                                         </span>
                                       }
                                     >
-                                      <Match
-                                        when={currentExecutionSource().history}
-                                      >
+                                      <Match when={history()}>
                                         <IconTablerPencil />
                                       </Match>
                                     </Switch>
@@ -839,7 +901,7 @@ ${response.reason}
                                     <KeyValueCopier
                                       class="p-1"
                                       data={
-                                        responseResource.latest.status ===
+                                        responseResource.latest?.status ===
                                         "fulfilled"
                                           ? responseResource.latest.value
                                               .inbound.values
@@ -950,14 +1012,12 @@ ${response.reason}
                     <Match when={view() == "history"}>
                       <RequestHistory
                         onRestore={restoreFromHistory}
-                        onReload={reloadFromHistory}
                         isCurrent={createSelector(currentTrace)}
                       />
                     </Match>
                     <Match when={view() == "recall"}>
                       <RecallSystem
                         onRestore={restoreFromHistory}
-                        onReload={reloadFromHistory}
                         isCurrent={createSelector(currentTrace)}
                       />
                     </Match>

@@ -11,15 +11,14 @@ governing permissions and limitations under the License.
 */
 
 import { createMemo, createSignal, on, type Accessor } from "solid-js";
-import { deferred, recv, ship } from "pardon/utils";
-import { HTTP } from "pardon/formats";
+import { Deferred, deferred, recv, ship } from "pardon/utils";
+import { cancelTrace } from "../components/request-history.ts";
 
-export type ExecutionResult =
-  | ({ type: "response" } & Awaited<ReturnType<typeof window.pardon.continue>>)
-  | ({ type: "history" } & ExecutionHistory);
+export type ExecutionResult = Awaited<
+  ReturnType<typeof window.pardon.continue>
+>;
 
 export type ExecutionOutboundResult = {
-  type: "request" | "history";
   context: { ask: string; trace: number };
 } & Omit<Awaited<ReturnType<typeof window.pardon.render>>, "secure">;
 
@@ -33,6 +32,34 @@ export type ExecutionProgress =
   | "complete"
   | "failed";
 
+function makeDebouncer(defaultDelay?: number) {
+  let debouncer: Deferred<void> | undefined;
+
+  return async function debounce({
+    delay = defaultDelay ?? 300,
+    gate,
+  }: {
+    delay?: number;
+    gate?: Promise<any>;
+  }) {
+    debouncer?.resolution.reject(undefined);
+    debouncer = deferred();
+    debouncer.promise.catch(() => {});
+
+    const debouncer0 = debouncer;
+    setTimeout(() => {
+      debouncer0.resolution.resolve();
+    }, delay);
+
+    await gate;
+
+    await debouncer.promise;
+  };
+}
+
+const renderDebouncer = makeDebouncer(200);
+const previewDebouncer = makeDebouncer(50);
+
 export function executionMemo(source: Accessor<PardonExecutionSource>) {
   return createMemo(
     on<
@@ -40,21 +67,18 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
       {
         abort(reason: any): void;
         progress: ExecutionProgress;
+        context: Promise<
+          Awaited<ReturnType<typeof window.pardon.context>>["context"]
+        >;
         preview: ReturnType<typeof window.pardon.preview>;
         request: Promise<
-          Awaited<ReturnType<typeof window.pardon.render>> & {
-            type: "history" | "request";
-          }
+          Awaited<ReturnType<typeof window.pardon.render>>["render"]
         >;
-        response: Promise<
-          Awaited<ReturnType<typeof window.pardon.continue>> & {
-            type: "history" | "response";
-          }
-        >;
+        response: ReturnType<typeof window.pardon.continue>;
         send(): void;
       }
     >(source, (source, _previousSource, previous) => {
-      const { http, values, history } = source;
+      const { http, values } = source;
 
       const gates = {
         preview: deferred<boolean>(),
@@ -66,9 +90,17 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
         history ? "history" : "preview",
       );
 
-      const abort = (reason) => {
+      const abort = (reason: any) => {
         for (const gate of Object.values(gates)) {
           gate.resolution.reject(reason);
+        }
+
+        if (["pending", "rendering"].includes(progress())) {
+          contextTask
+            .then(({ context: { trace } }) => {
+              cancelTrace(trace);
+            })
+            .catch(() => {});
         }
       };
 
@@ -80,31 +112,32 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
         });
       }
 
-      if (previous) {
-        previous.abort(undefined);
-      }
+      previous?.abort(undefined);
+
+      const contextTask = (async () => {
+        const context = await window.pardon.context(http, ship(values), {
+          pretty: true,
+        });
+
+        return context;
+      })();
 
       const previewTask = (async () => {
-        await gates.preview.promise;
+        const { handle } = await contextTask;
 
-        return recv(
-          await window.pardon.preview(http, ship(values), {
-            pretty: true,
-          }),
-        );
+        await previewDebouncer({ gate: gates.preview.promise });
+
+        return recv(await window.pardon.preview(handle));
       })();
 
       const renderTask = (async () => {
-        await gates.render.promise;
+        const { handle } = await contextTask;
+        await renderDebouncer({ gate: gates.render.promise });
 
         setProgress("rendering");
 
         try {
-          const result = recv(
-            await window.pardon.render(http, ship(values), {
-              pretty: true,
-            }),
-          );
+          const result = recv(await window.pardon.render(handle));
 
           setProgress("pending");
 
@@ -139,55 +172,27 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
 
       return {
         abort,
+        get context() {
+          return contextTask.then(({ context }) => context);
+        },
         get progress() {
           return progress();
         },
         get preview() {
-          if (history) {
-            return Promise.reject();
-          }
-
           gates.preview.resolution.resolve(true);
 
           return previewTask;
         },
         get request() {
-          if (history) {
-            return Promise.resolve({
-              http: HTTP.stringify(
-                HTTP.requestObject.fromJSON(history.outbound.request),
-              ),
-              outbound: history.outbound,
-              context: { timestamps: {}, durations: {}, ...history.context },
-              secure: undefined!,
-              handle: undefined! as string,
-              type: "history" as const,
-            });
-          }
-
           gates.render.resolution.resolve(true);
 
-          return renderTask.then((result) => ({
-            ...result,
-            type: "request" as const,
-          }));
+          return renderTask.then(({ render }) => render);
         },
         send() {
           gates.response.resolution.resolve(true);
         },
         get response() {
-          if (history) {
-            return Promise.resolve({
-              ...history,
-              context: { timestamps: {}, durations: {}, ...history.context },
-              type: "history" as const,
-            });
-          }
-
-          return responseTask.then((result) => ({
-            ...result,
-            type: "response" as const,
-          }));
+          return responseTask;
         },
       };
     }),

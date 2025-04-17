@@ -11,17 +11,11 @@ governing permissions and limitations under the License.
 */
 
 import { HTTP } from "pardon/formats";
-import {
-  createEffect,
-  createResource,
-  ParentProps,
-  Setter,
-  Suspense,
-} from "solid-js";
+import { createResource, ParentProps, Suspense } from "solid-js";
 import settle from "../../util/settle.ts";
 import LoadingSplash from "../LoadingSplash.tsx";
 import CodeMirror from "../codemirror/CodeMirror.tsx";
-import { ExecutionResult } from "../../signals/pardon-execution.ts";
+import { ExecutionResult } from "../../signals/pardon-execution-signal.ts";
 import { secureData } from "../secure-data.ts";
 
 export default function ResponseView(
@@ -30,38 +24,12 @@ export default function ResponseView(
     redacted: boolean;
     include?: boolean;
     kv?: boolean;
-    lastResult: ExecutionHistory;
-    setLastResult?: Setter<ExecutionHistory | undefined>;
   }>,
 ) {
   const [execution] = createResource(
     () => props.execution,
     async (execution) => await settle(execution),
   );
-
-  createEffect(() => {
-    if (
-      execution.state === "ready" &&
-      execution.latest.status === "fulfilled" &&
-      execution.latest.value?.type === "response"
-    ) {
-      const {
-        inbound,
-        outbound,
-        context: { ask, trace },
-      } = execution.latest.value;
-
-      const result: ExecutionHistory = {
-        context: { ask, trace },
-        inbound,
-        outbound: {
-          request: outbound.request,
-        },
-      };
-
-      props.setLastResult?.(() => result);
-    }
-  });
 
   function displayInbound(result: ExecutionResult | ExecutionHistory) {
     const {
@@ -91,6 +59,10 @@ export default function ResponseView(
           "",
         );
       default:
+        if ((execution.value as ExecutionHistory).error) {
+          return (execution.value as ExecutionHistory).error;
+        }
+
         return displayInbound(execution.value);
     }
   }

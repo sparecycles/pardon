@@ -20,6 +20,8 @@ import {
   Show,
   splitProps,
   JSX,
+  Switch,
+  Match,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
 import Toggle from "./Toggle.tsx";
@@ -40,7 +42,6 @@ export function RequestSummaryTree(props: {
   expandedSet: Set<string>;
   isCurrent(trace: number): boolean;
   onRestore(history: ExecutionHistory): void;
-  onReload(history: ExecutionHistory): void;
   clearTrace?(trace: number): void;
 }) {
   const path = createMemo(() => [...(props.path ?? []), props.trace]);
@@ -62,7 +63,6 @@ export function RequestSummaryTree(props: {
             path={path()}
             expandedSet={props.expandedSet}
             onRestore={props.onRestore}
-            onReload={props.onReload}
             clearTrace={props.clearTrace}
           />
         )}
@@ -81,7 +81,6 @@ export function RequestSummaryNode(props: {
   exapandable?: boolean;
   note?: JSX.Element;
   onRestore(history: ExecutionHistory): void;
-  onReload(history: ExecutionHistory): void;
   clearTrace?(trace: number): void;
 }) {
   const depth = createMemo(() => props.path?.length ?? 0);
@@ -121,7 +120,6 @@ export function RequestSummaryNode(props: {
               <RequestSummary
                 trace={props.trace}
                 onRestore={props.onRestore}
-                onReload={props.onReload}
                 clearTrace={props.clearTrace}
                 note={props.note}
                 current={props.current}
@@ -149,7 +147,6 @@ export function RequestSummaryNode(props: {
           <RequestSummary
             trace={props.trace}
             onRestore={props.onRestore}
-            onReload={props.onReload}
             clearTrace={props.clearTrace}
             note={props.note}
             current={props.current}
@@ -173,7 +170,6 @@ export function RequestSummary(
   props: {
     trace: Trace;
     onRestore(history: ExecutionHistory): void;
-    onReload(history: ExecutionHistory): void;
     clearTrace?(trace: number): void;
     note?: JSX.Element;
     current?: boolean;
@@ -182,7 +178,6 @@ export function RequestSummary(
   const [, spanProps] = splitProps(props, [
     "trace",
     "onRestore",
-    "onReload",
     "clearTrace",
     "note",
     "current",
@@ -209,6 +204,7 @@ export function RequestSummary(
               start: {
                 context: { ask },
               },
+              error,
             },
             onRestore,
           } = props;
@@ -220,39 +216,38 @@ export function RequestSummary(
             },
             outbound,
             inbound: result?.inbound,
-            endpoint: undefined!,
-            outcome: undefined!,
+            error,
           });
         }}
       >
         <span
           {...spanProps}
           class={twMerge(
-            "inline-flex min-w-6 flex-initial font-mono",
+            "inline-flex w-7 flex-initial font-mono",
             spanProps.class,
           )}
         >
-          <Show
-            when={props.trace?.result}
+          <Switch
             fallback={
-              <Show
-                when={props.trace?.sent}
-                fallback={
-                  <>
-                    <IconTablerPencil class="inline-block flex-1 text-center" />
-                  </>
-                }
-              >
-                <LoadingSplash />
-              </Show>
+              <>
+                <IconTablerPencil class="inline-block flex-1 text-center" />
+              </>
             }
           >
-            {String(response()?.status)}
-          </Show>
+            <Match when={props.trace?.result}>
+              {String(response()?.status ?? "") || <IconTablerX />}
+            </Match>
+            <Match when={props.trace?.error}>
+              <IconTablerX class="m-auto" />
+            </Match>
+            <Match when={props.trace?.sent}>
+              <LoadingSplash />
+            </Match>
+          </Switch>
         </span>
         <HttpMethodIcon
           method={request()?.method}
-          class="flex-initial translate-y-[7px] scale-[1.1] pr-0.5 text-2xl"
+          class="relative top-[0.1rem]"
         />
         <code class="flex-1 overflow-hidden overflow-ellipsis">
           {request()?.url}

@@ -28,17 +28,17 @@ const initialSettings = new Promise<Preferences>((resolve, reject) => {
 });
 
 const pardonWorkerApi: PardonWorkerHandlers = {
-  async preview(http, input, options) {
+  async context(http, input, options) {
     if (!http && !input?.endpoint) {
       throw "";
     }
-    return await invokePardonWorker("preview", http, input, options);
+    return await invokePardonWorker("context", http, input, options);
   },
-  async render(http, input, options) {
-    if (!http && !input?.endpoint) {
-      throw "";
-    }
-    return await invokePardonWorker("render", http, input, options);
+  async preview(handle) {
+    return await invokePardonWorker("preview", handle);
+  },
+  async render(handle) {
+    return await invokePardonWorker("render", handle);
   },
   async continue(handle) {
     return await invokePardonWorker("continue", handle);
@@ -151,8 +151,8 @@ ipcRenderer.addListener("trace:completed", (_event, data) => {
   pardonHistoryFowarder?.onResult(data.trace, data);
 });
 
-ipcRenderer.addListener("trace:error", (_event, message) => {
-  pardonHistoryFowarder?.onError(message.trace, message);
+ipcRenderer.addListener("trace:error", (_event, data) => {
+  pardonHistoryFowarder?.onError(data.trace, data);
 });
 
 ipcRenderer.addListener("test:event", (_event, message) => {
@@ -183,7 +183,6 @@ async function invokePardonWorker<Action extends keyof PardonWorkerHandlers>(
 ): Promise<Awaited<ReturnType<PardonWorkerHandlers[Action]>>> {
   const result = (await ipcRenderer.invoke("pardon", action, ...args)) as any;
 
-  console.log(action, args, result);
   if (result.exception) {
     throw result.exception;
   }

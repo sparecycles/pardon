@@ -16,8 +16,11 @@ import { twMerge } from "tailwind-merge";
 export default function Title(props: ComponentProps<"div">) {
   const [, divProps] = splitProps(props, ["children"]);
   return (
-    <div {...divProps} class={twMerge(divProps.class, "zen px-2")}>
-      <span class="title flex flex-1 place-content-center border-b-1 border-current border-opacity-25">
+    <div
+      {...divProps}
+      class={twMerge(divProps.class, "zen mb-1 [&:not(:first-child)]:mt-3")}
+    >
+      <span class="title flex flex-1 border-t-[0.125rem] px-1 dark:border-slate-400 dark:bg-slate-600">
         {props.children}
       </span>
     </div>

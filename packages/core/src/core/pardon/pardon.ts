@@ -549,31 +549,8 @@ export const PardonFetchExecution = pardonExecution({
       },
     };
   },
-  onerror(error, stage, { match }) {
-    if (match) {
-      return new PardonError(
-        `${match.endpoint.configuration.path} (${stage}): ${why(error)}`,
-      );
-    }
-  },
+  error() {},
 });
-
-function why(error: unknown) {
-  const reasons: string[] = [];
-
-  while (error?.["cause"] !== undefined) {
-    reasons.unshift(String(error?.["message"] ?? error));
-    error = error["cause"];
-  }
-
-  if (reasons.length) {
-    reasons.unshift(String(error?.["message"] ?? error));
-
-    return reasons.join("\n - ");
-  }
-
-  return error?.["message"] ?? error;
-}
 
 function cleanRequestValues(request: Record<string, unknown>) {
   return definedObject({

@@ -12,6 +12,7 @@ governing permissions and limitations under the License.
 
 import { RequestJSON, ResponseJSON } from "pardon/formats";
 import type { PardonElectronApi } from "./preload.js";
+import { PardonHttpExecutionContext } from "pardon/features/remember";
 
 // Used in Renderer process, expose in `preload.ts`
 declare global {
@@ -34,24 +35,40 @@ declare global {
   type PardonExecutionSource = {
     http: string;
     values: Record<string, unknown>; // actual values, usually the combined value
-    history?: {
-      context: {
-        trace: number;
-        ask: string;
-      };
+  };
+
+  type PardonExecutionRender = {
+    context: {
+      trace: number;
+      ask: string;
+      durations: PardonHttpExecutionContext["durations"];
+    };
+    outbound: {
+      request: RequestJSON;
+    };
+    secure: {
       outbound: {
         request: RequestJSON;
       };
-      inbound: {
-        outcome?: string;
-        response: ResponseJSON;
-        values: Record<string, unknown>;
-      };
-      endpoint: string;
-      outcome: string;
     };
+    error?: any;
   };
-  type ExecutionHistory = Exclude<PardonExecutionSource["history"], undefined>;
+
+  type ExecutionHistory = {
+    context: {
+      trace: number;
+      ask: string;
+    };
+    outbound: {
+      request: RequestJSON;
+    };
+    inbound: {
+      outcome?: string;
+      response: ResponseJSON;
+      values: Record<string, unknown>;
+    };
+    error?: any;
+  };
 
   type Optional<T, Keys extends keyof T> = Omit<T, Keys> &
     Partial<Pick<T, Keys>>;

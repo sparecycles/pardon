@@ -206,7 +206,7 @@ export function CollectionTreeView(
               <Show when={expanded()} fallback={<IconTablerFolder />}>
                 <IconTablerFolderOpen />
               </Show>
-              <span>{props.item.name}</span>
+              <span class="pl-1">{props.item.name}</span>
             </button>
           </Show>
         </Match>

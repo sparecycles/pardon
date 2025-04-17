@@ -10,8 +10,7 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { createMemo, For, createContext, Show, Accessor, on } from "solid-js";
-import { executionMemo } from "../signals/pardon-execution.ts";
+import { createMemo, For, createContext, Show } from "solid-js";
 import { RequestSummaryTree } from "./RequestSummaryTree.tsx";
 import {
   activeTrace,
@@ -19,7 +18,6 @@ import {
   clearTrace,
   requestHistory,
   Trace,
-  traceCurrentRequest,
   traces,
 } from "./request-history.ts";
 
@@ -28,35 +26,8 @@ export const RequestSummaryInfo = createContext<{
   inbound(trace: Trace): void;
 }>();
 
-export function startTracingRequestHistory(
-  render: Accessor<
-    PromiseSettledResult<
-      Awaited<ReturnType<ReturnType<typeof executionMemo>>["request"]>
-    >
-  >,
-) {
-  const currentRequest = createMemo(
-    on(render, (render) => {
-      if (render?.status !== "fulfilled") {
-        return;
-      }
-
-      const request = render?.value;
-      if (
-        request.type !== "history" &&
-        typeof request?.context.trace !== "undefined"
-      ) {
-        return request;
-      }
-    }),
-  );
-
-  traceCurrentRequest(currentRequest);
-}
-
 export default function RequestHistory(props: {
   onRestore(history: ExecutionHistory): void;
-  onReload(history: ExecutionHistory): void;
   isCurrent(trace: number): boolean;
 }) {
   const tree = requestHistory(activeTrace);
@@ -83,7 +54,6 @@ export default function RequestHistory(props: {
                 trace={trace}
                 deps={deps}
                 onRestore={props.onRestore}
-                onReload={props.onReload}
                 expandedSet={expandedSet}
                 clearTrace={clearTrace}
               />

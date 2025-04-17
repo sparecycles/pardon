@@ -50,7 +50,6 @@ function qt(s: string) {
 
 export default function RecallSystem(props: {
   onRestore(history: ExecutionHistory): void;
-  onReload(history: ExecutionHistory): void;
   isCurrent(trace: number): boolean;
 }) {
   const [values, setValues] = createSignal<Record<string, unknown>>();
@@ -184,7 +183,6 @@ export default function RecallSystem(props: {
                         },
                       }}
                       onRestore={props.onRestore}
-                      onReload={props.onReload}
                       fallback={
                         <>
                           <For each={shownValues()}>

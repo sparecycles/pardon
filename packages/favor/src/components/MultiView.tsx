@@ -31,6 +31,7 @@ const MultiviewContext = createContext<{
   controls: Record<any, JSX.Element>;
   disabled?: Accessor<boolean | Partial<Record<any, boolean>>>;
   viewSignal: Signal<any>;
+  defaulting: Accessor<any[]>;
 }>();
 
 export default function MultiView<Value extends string>(
@@ -40,6 +41,7 @@ export default function MultiView<Value extends string>(
     disabled?: boolean | Partial<Record<NoInfer<Value>, boolean>>;
     onChange?: (value: NoInfer<Value>) => void;
     children: (viewSignal: Signal<NoInfer<Value>>) => JSX.Element;
+    defaulting?: Accessor<NoInfer<Value>[]>;
   } & Omit<ComponentProps<"div">, "children">,
 ) {
   const [contextProps, , divProps] = splitProps(
@@ -64,6 +66,9 @@ export default function MultiView<Value extends string>(
         ...contextProps,
         disabled: createMemo(() => contextProps.disabled),
         viewSignal: [view, setView],
+        defaulting: createMemo(
+          () => props.defaulting?.() ?? Object.keys(props.controls),
+        ),
       }}
     >
       <div {...divProps} class={twMerge("multiview-root", divProps.class)}>
@@ -80,6 +85,7 @@ export function Controls<Value extends string>(
     viewSignal: [view, setView],
     controls,
     disabled,
+    defaulting,
   } = useContext(MultiviewContext);
   const selected = createSelector(view);
 
@@ -88,7 +94,7 @@ export function Controls<Value extends string>(
     on(disabled, (disabled) => {
       if (disabled && typeof disabled === "object") {
         if (disabled[view()]) {
-          for (const key of Object.keys(controls)) {
+          for (const key of defaulting()) {
             if (!disabled[key]) {
               setView(() => key as Value);
               return;

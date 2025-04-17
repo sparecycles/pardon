@@ -175,7 +175,7 @@ export default function Services(props: {
   });
 
   return (
-    <div class="relative flex size-full max-h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <div class="relative flex size-full min-h-0 flex-1 flex-col overflow-auto">
       <div class="min-h-0 flex-1 overflow-auto">
         <For each={collection()}>
           {(item) => {
@@ -183,7 +183,7 @@ export default function Services(props: {
               <>
                 <Title>{item.name}</Title>
                 <CollectionTreeView
-                  class="p-1 text-sm"
+                  class="text-sm"
                   onClick={(item, event) =>
                     props.onClick?.(item.key, item.info, event)
                   }
