@@ -45,7 +45,7 @@ function requestObjectStringify({
   ...request
 }: Partial<RequestObject>) {
   const { origin, pathname, searchParams } = intoURL(request);
-  return `${KV.stringify(values ?? {}, "\n", 2, "\n\n")}${origin?.trim() ? (request.method ?? "GET") : ""} ${origin ?? ""}${pathname ?? ""}${
+  return `${KV.stringify(values ?? {}, "\n", 2, "\n")}${origin?.trim() ? (request.method ?? "GET") : ""} ${origin ?? ""}${pathname ?? ""}${
     searchParams ?? ""
   }${[...Object.entries(request.meta ?? {})]
     .map(([k, v]) => `\n[${k}]: ${v}`)

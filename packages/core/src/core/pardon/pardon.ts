@@ -163,6 +163,7 @@ export const PardonFetchExecution = pardonExecution({
       method = (values.method as string) ?? "GET",
       headers = [],
       body = undefined,
+      meta,
     } = init ?? {};
 
     return {
@@ -183,6 +184,7 @@ export const PardonFetchExecution = pardonExecution({
           headers: new Headers(headers),
           body,
           values,
+          meta,
         }),
       ...otherContextData,
     };

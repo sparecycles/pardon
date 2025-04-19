@@ -11,13 +11,7 @@ governing permissions and limitations under the License.
 */
 
 import { makePersisted } from "@solid-primitives/storage";
-import {
-  Accessor,
-  createEffect,
-  createMemo,
-  createRoot,
-  createSignal,
-} from "solid-js";
+import { createEffect, createMemo, createRoot, createSignal } from "solid-js";
 import { HistoryTree } from "./RequestSummaryTree.tsx";
 import { persistJson } from "../util/persistence.ts";
 import localforage from "localforage";
@@ -35,7 +29,7 @@ export type Trace = {
   result?: TracingHookPayloads["onResult"]["trace"];
 };
 
-const [history, setHistory] = makePersisted(
+const [history, setHistory, initHistory] = makePersisted(
   createSignal<{
     traces: Record<number, Trace>;
   }>({ traces: {} }),
@@ -46,44 +40,30 @@ const [history, setHistory] = makePersisted(
   },
 );
 
-setTimeout(() => console.log("history size", history().traces), 1000);
-
+export const [traces, setTraces] = createSignal<Record<number, Trace>>({});
 export const [activeTrace, updateActiveTrace] = createSignal<number>();
 
-export function clearAllTraces() {
-  setHistory(({ traces }) => {
-    const currentTrace = traces?.[activeTrace()];
+Promise.resolve(initHistory).then((historyJson) => {
+  const history = historyJson ? JSON.parse(historyJson) : { traces: {} };
 
-    if (currentTrace) {
-      return { traces: { [activeTrace()]: currentTrace } };
-    }
+  setTraces({ ...history.traces, ...traces });
+});
 
-    return {
-      traces: {},
-    };
-  });
-}
-
-export function clearTrace(trace: number) {
-  setHistory(({ traces: { [trace]: _, ...traces } }) => ({ traces }));
-}
-
-export const { traces } = createRoot(() => {
+// create global effects inside a createRoot to avoid a warning.
+createRoot(() => {
   createEffect(() => {
     window.pardon.registerHistoryForwarder({
       onRenderStart(trace, start) {
-        setHistory(({ traces }) => {
+        setTraces((traces) => {
           const thisTrace = traces?.[trace];
 
           return {
-            traces: {
-              ...traces,
-              [trace]: {
-                ...thisTrace,
-                trace,
-                start,
-                tlr: thisTrace?.tlr || Number(activeTrace()) == Number(trace),
-              },
+            ...traces,
+            [trace]: {
+              ...thisTrace,
+              trace,
+              start,
+              tlr: thisTrace?.tlr || Number(activeTrace()) == Number(trace),
             },
           };
         });
@@ -93,23 +73,23 @@ export const { traces } = createRoot(() => {
           ...data,
           [trace]: { ...data[trace], ...secure },
         }));
-        setHistory(({ traces }) => {
+
+        setTraces((traces) => {
           const thisTrace = traces[trace];
           return {
-            traces: {
-              ...traces,
-              [trace]: {
-                ...thisTrace,
-                render,
-                tlr: thisTrace?.tlr || Number(activeTrace()) == Number(trace),
-              },
+            ...traces,
+            [trace]: {
+              ...thisTrace,
+              render,
+              tlr: thisTrace?.tlr || Number(activeTrace()) == Number(trace),
             },
           };
         });
       },
       onSend(trace) {
-        setHistory(({ traces }) => ({
-          traces: { ...traces, [trace]: { ...traces[trace], sent: true } },
+        setTraces((traces) => ({
+          ...traces,
+          [trace]: { ...traces[trace], sent: true },
         }));
       },
       onResult(trace, { secure, ...result }) {
@@ -117,34 +97,83 @@ export const { traces } = createRoot(() => {
           ...data,
           [trace]: { ...data[trace], ...secure },
         }));
-        setHistory(({ traces }) => ({
-          traces: { ...traces, [trace]: { ...traces[trace], result } },
-        }));
+
+        setTraces((traces) => {
+          const combinedTraces = {
+            ...traces,
+            [trace]: { ...traces[trace], result },
+          };
+
+          setHistory(() => ({
+            traces: combinedTraces,
+          }));
+
+          return combinedTraces;
+        });
       },
       onError(trace, { error }) {
-        setHistory(({ traces: { [trace]: record, ...traces } }) => {
-          if (!record.render) {
-            return { traces };
+        setTraces(({ [trace]: record, ...traces }) => {
+          if (record?.render) {
+            const combinedTraces = {
+              ...traces,
+              [trace]: { ...record, error },
+            };
+
+            setHistory(() => ({
+              traces: combinedTraces,
+            }));
+
+            return combinedTraces;
           }
 
-          return {
-            traces: {
-              ...traces,
-              [trace]: { ...record, error: `${error}` },
-            },
-          };
+          return traces;
         });
       },
     });
   });
 
-  const traces = createMemo(() => history()?.traces ?? {});
+  createEffect((previousTraceId: number) => {
+    const currentTraceId = activeTrace();
+    const currentTrace = traces()?.[currentTraceId];
+    if (!currentTrace?.render) {
+      return previousTraceId;
+    }
 
-  return { traces };
+    if (
+      currentTraceId !== previousTraceId &&
+      traces()?.[previousTraceId]?.cancelled
+    ) {
+      setTraces(({ [previousTraceId]: previous, ...traces }) => traces);
+
+      return currentTraceId;
+    }
+
+    return currentTraceId;
+  });
 });
 
+setTimeout(() => console.log("history size", history().traces), 1000);
+
+export function clearAllTraces() {
+  setTraces({});
+
+  setHistory({
+    traces: {},
+  });
+}
+
+export function clearTrace(trace: number) {
+  setTraces(({ [trace]: _, ...traces }) => {
+    return traces;
+  });
+
+  setHistory(({ traces: { [trace]: _, ...traces } }) => {
+    return { traces };
+  });
+}
+
 export function cancelTrace(trace: number) {
-  setHistory(({ traces: { [trace]: cancelled, ...traces } }) => {
+  setTraces(({ [trace]: cancelled, ...traces }) => {
     if (trace !== activeTrace()) {
       return {
         traces,
@@ -152,41 +181,21 @@ export function cancelTrace(trace: number) {
     }
 
     return {
-      traces: {
-        ...traces,
-        [trace]: {
-          ...cancelled,
-          cancelled: true,
-        },
+      ...traces,
+      [trace]: {
+        ...cancelled,
+        cancelled: true,
       },
     };
   });
 }
 
-createEffect((previousTrace: number) => {
-  const currentTrace = activeTrace();
-  if (!traces()?.[currentTrace]?.render) {
-    return previousTrace;
-  }
-
-  if (currentTrace !== previousTrace && traces()?.[previousTrace]?.cancelled) {
-    setHistory(({ traces: { [previousTrace]: previous, ...traces } }) => ({
-      traces,
-    }));
-    return currentTrace;
-  }
-
-  return currentTrace;
-});
-
-export function requestHistoryForest(currentRequest: number) {
+export function requestHistoryForest() {
   const allTraces = traces();
   const list = Object.values(allTraces)
     .filter(
-      ({ trace, start, render, sent, tlr, cancelled }) =>
-        cancelled ||
-        ((tlr || start || render) &&
-          (currentRequest === Number(trace) || sent)),
+      ({ start, render, sent, tlr, cancelled }) =>
+        !cancelled && (tlr || start || render) && sent,
     )
     .map(({ trace }) => Number(trace))
     .sort((a, b) => b - a);
@@ -194,7 +203,7 @@ export function requestHistoryForest(currentRequest: number) {
   const toplevel = list.filter((id) => {
     const { tlr, cancelled } = allTraces[id] ?? {};
 
-    return tlr || cancelled;
+    return tlr && !cancelled;
   });
 
   const seen = new Set<number>();
@@ -230,13 +239,12 @@ export function requestHistoryForest(currentRequest: number) {
         !sharedPerRequest.has(trace) &&
         visit(trace, sharedPerRequest),
     )
-    .filter(Boolean);
+    .filter(Boolean)
+    .map<HistoryTree>((info) => ({ ...info, auto: true }));
 
-  return [...known, ...unknown]; //.sort(({ trace: a }, { trace: b }) => b - a);
+  return [...known, ...unknown].sort(({ trace: a }, { trace: b }) => b - a);
 }
 
-export function requestHistory(currentRequest: Accessor<number>) {
-  return createMemo(() => {
-    return requestHistoryForest(currentRequest());
-  });
+export function requestHistory() {
+  return createMemo(requestHistoryForest);
 }

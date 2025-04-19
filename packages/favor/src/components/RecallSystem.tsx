@@ -196,7 +196,7 @@ export default function RecallSystem(props: {
                                   <></>
                                 )}
                                 <KeyValueCopier
-                                  data={data}
+                                  values={data}
                                   classList={{
                                     "ml-2": Boolean(scope),
                                   }}
@@ -224,7 +224,7 @@ export default function RecallSystem(props: {
                               <></>
                             )}
                             <KeyValueCopier
-                              data={data}
+                              values={data}
                               classList={{
                                 "ml-2": Boolean(scope),
                               }}

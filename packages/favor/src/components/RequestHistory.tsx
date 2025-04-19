@@ -13,7 +13,6 @@ governing permissions and limitations under the License.
 import { createMemo, For, createContext, Show } from "solid-js";
 import { RequestSummaryTree } from "./RequestSummaryTree.tsx";
 import {
-  activeTrace,
   clearAllTraces,
   clearTrace,
   requestHistory,
@@ -30,7 +29,7 @@ export default function RequestHistory(props: {
   onRestore(history: ExecutionHistory): void;
   isCurrent(trace: number): boolean;
 }) {
-  const tree = requestHistory(activeTrace);
+  const tree = requestHistory();
 
   const expandedSet = new Set<string>();
 
@@ -47,12 +46,11 @@ export default function RequestHistory(props: {
       <div class="fade-to-clear flex flex-1 flex-col overflow-auto">
         <ul class="flex flex-initial flex-col text-nowrap px-0 py-2 text-xs">
           <For each={tree().slice(0, cutoff)}>
-            {({ trace, deps }) => (
+            {(node) => (
               <RequestSummaryTree
                 traces={traces()}
                 isCurrent={props.isCurrent}
-                trace={trace}
-                deps={deps}
+                node={node}
                 onRestore={props.onRestore}
                 expandedSet={expandedSet}
                 clearTrace={clearTrace}

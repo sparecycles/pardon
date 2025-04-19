@@ -17,7 +17,6 @@ import type { AssetSource, AssetType, AssetInfo } from "pardon/runtime";
 import { CollectionTreeItem, Filters } from "./collection-tree-types.ts";
 import CornerControls from "../CornerControls.tsx";
 import { animation } from "../animate.ts";
-import Title from "../Title.tsx";
 
 void animation; // used via use:animation
 
@@ -175,13 +174,15 @@ export default function Services(props: {
   });
 
   return (
-    <div class="relative flex size-full min-h-0 flex-1 flex-col overflow-auto">
-      <div class="min-h-0 flex-1 overflow-auto">
+    <div class="flex size-full min-h-0 flex-1 flex-col font-mono">
+      <div class="grid grid-flow-row overflow-auto">
         <For each={collection()}>
           {(item) => {
             return (
               <>
-                <Title>{item.name}</Title>
+                <div class="mb-1 border-t-[0.125rem] px-1 text-sm font-bold dark:border-slate-400 dark:bg-slate-600 [&:not(:first-child)]:mt-3">
+                  {item.name}
+                </div>
                 <CollectionTreeView
                   class="text-sm"
                   onClick={(item, event) =>

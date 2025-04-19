@@ -57,7 +57,7 @@ function makeDebouncer(defaultDelay?: number) {
   };
 }
 
-const renderDebouncer = makeDebouncer(200);
+const renderDebouncer = makeDebouncer(100);
 const previewDebouncer = makeDebouncer(50);
 
 export function executionMemo(source: Accessor<PardonExecutionSource>) {

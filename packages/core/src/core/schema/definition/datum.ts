@@ -24,6 +24,7 @@ import {
   patternize,
   patternsMatch,
   renderTrivialPattern,
+  arePatternsCompatible,
 } from "../core/pattern.js";
 import {
   isNonEmpty,
@@ -125,6 +126,14 @@ function mergeRepresentation<T extends Scalar>(
         : patternize(String(template), custom);
 
     if (context.evaluationScope.path.length) {
+      if (
+        !patterns.every((pattern) =>
+          arePatternsCompatible(pattern, templatePattern),
+        )
+      ) {
+        return;
+      }
+
       if (
         !patterns.some((pattern) => patternsMatch(templatePattern, pattern))
       ) {

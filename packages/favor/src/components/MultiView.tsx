@@ -29,6 +29,7 @@ import { twMerge } from "tailwind-merge";
 
 const MultiviewContext = createContext<{
   controls: Record<any, JSX.Element>;
+  controlProps?: Accessor<Partial<Record<any, any>>>;
   disabled?: Accessor<boolean | Partial<Record<any, boolean>>>;
   viewSignal: Signal<any>;
   defaulting: Accessor<any[]>;
@@ -37,6 +38,7 @@ const MultiviewContext = createContext<{
 export default function MultiView<Value extends string>(
   props: {
     controls: Record<Value, JSX.Element>;
+    controlProps?: Partial<Record<NoInfer<Value>, any>>;
     view: NoInfer<Value>;
     disabled?: boolean | Partial<Record<NoInfer<Value>, boolean>>;
     onChange?: (value: NoInfer<Value>) => void;
@@ -64,6 +66,7 @@ export default function MultiView<Value extends string>(
     <MultiviewContext.Provider
       value={{
         ...contextProps,
+        controlProps: createMemo(() => props.controlProps),
         disabled: createMemo(() => contextProps.disabled),
         viewSignal: [view, setView],
         defaulting: createMemo(
@@ -86,6 +89,7 @@ export function Controls<Value extends string>(
     controls,
     disabled,
     defaulting,
+    controlProps,
   } = useContext(MultiviewContext);
   const selected = createSelector(view);
 
@@ -110,10 +114,16 @@ export function Controls<Value extends string>(
       {([key, control]) => (
         <button
           {...props}
-          class={twMerge("multiview-button", props.class)}
+          {...controlProps()?.[key]}
+          class={twMerge(
+            "multiview-button",
+            props.class,
+            controlProps()?.class,
+          )}
           classList={{
             "multiview-selected": selected(key as Value),
             ...props.classList,
+            ...controlProps()?.[key]?.classList,
           }}
           value={key}
           onClick={() => setView(() => key as Value)}

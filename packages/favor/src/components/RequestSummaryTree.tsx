@@ -32,34 +32,37 @@ import { displayHttp } from "./display-util.ts";
 import { HTTP } from "pardon/formats";
 import { recv } from "pardon/utils";
 
-export type HistoryTree = { trace: number; deps: HistoryTree[] };
+export type HistoryTree = {
+  trace: number;
+  auto?: boolean;
+  deps: HistoryTree[];
+};
 
 export function RequestSummaryTree(props: {
   traces: Record<number, Trace>;
-  trace: number;
-  deps: HistoryTree[];
+  node: HistoryTree;
   path?: number[];
   expandedSet: Set<string>;
   isCurrent(trace: number): boolean;
   onRestore(history: ExecutionHistory): void;
   clearTrace?(trace: number): void;
 }) {
-  const path = createMemo(() => [...(props.path ?? []), props.trace]);
+  const path = createMemo(() => [...(props.path ?? []), props.node.trace]);
   return (
     <RequestSummaryNode
       {...props}
       path={path()}
-      trace={recv(props.traces[props.trace])}
-      current={props.isCurrent(Number(props.trace))}
-      exapandable={props.deps.length > 0}
+      trace={recv(props.traces[props.node.trace])}
+      current={props.isCurrent(Number(props.node.trace))}
+      auto={props.node.auto}
+      exapandable={props.node.deps.length > 0}
     >
-      <For each={props.deps}>
-        {({ trace, deps }) => (
+      <For each={props.node.deps}>
+        {(node) => (
           <RequestSummaryTree
             traces={props.traces}
-            trace={trace}
+            node={node}
             isCurrent={props.isCurrent}
-            deps={deps}
             path={path()}
             expandedSet={props.expandedSet}
             onRestore={props.onRestore}
@@ -74,6 +77,7 @@ export function RequestSummaryTree(props: {
 export function RequestSummaryNode(props: {
   trace: Trace;
   current?: boolean;
+  auto?: boolean;
   path: number[];
   expandedSet: Set<string>;
   children?: JSX.Element;
@@ -121,6 +125,7 @@ export function RequestSummaryNode(props: {
                 trace={props.trace}
                 onRestore={props.onRestore}
                 clearTrace={props.clearTrace}
+                auto={props.auto}
                 note={props.note}
                 current={props.current}
               />
@@ -169,6 +174,7 @@ export function RequestSummaryNode(props: {
 export function RequestSummary(
   props: {
     trace: Trace;
+    auto?: boolean;
     onRestore(history: ExecutionHistory): void;
     clearTrace?(trace: number): void;
     note?: JSX.Element;
@@ -183,7 +189,7 @@ export function RequestSummary(
     "current",
   ]);
   const request = createMemo(() =>
-    displayHttp(props.trace.render?.outbound?.request),
+    displayHttp(props.trace?.render?.outbound?.request),
   );
   const response = createMemo(() => props.trace?.result?.inbound.response);
 
@@ -194,6 +200,7 @@ export function RequestSummary(
         classList={{
           "bg-transparent": !props.current,
           "bg-gray-400 bg-opacity-25": props.current,
+          "text-gray-400 dark:text-gray-500": props.auto,
         }}
         onClick={() => {
           const {

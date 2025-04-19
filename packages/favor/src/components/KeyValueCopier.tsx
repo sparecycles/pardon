@@ -10,17 +10,159 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { cleanObject, JSON, KV } from "pardon/formats";
-import { ComponentProps, For, JSX, splitProps } from "solid-js";
+import { JSON, KV } from "pardon/formats";
+import {
+  ComponentProps,
+  For,
+  splitProps,
+  JSX,
+  createSignal,
+  Accessor,
+  untrack,
+  createEffect,
+  on,
+} from "solid-js";
 import { twMerge } from "tailwind-merge";
 
+export type KvEntry = readonly [string, unknown, string];
+
+type KvCopierControl = {
+  data: Accessor<KvEntry[]>;
+  addValues(kv: Record<string, unknown>): void;
+  containsDatum(transfer: DataTransfer): boolean;
+  drop(transfer: DataTransfer): true | void;
+  deleteDatum(transfer: DataTransfer): void;
+  deleteAll(): void;
+};
+
+type KeyValueCopierContext = ReturnType<typeof makeKeyValueCopierContext>;
+
+export function makeKeyValueCopierContext(initialData?: KvEntry[]) {
+  const source = crypto.randomUUID();
+  const [data, setData] = createSignal<KvEntry[]>(initialData ?? []);
+
+  function addValues(kv: Record<string, unknown>) {
+    setData((data) => [
+      ...data,
+      ...Object.entries(kv ?? {}).map(
+        ([k, v]) => [k, v, crypto.randomUUID()] as KvEntry,
+      ),
+    ]);
+  }
+
+  function containsDatum(transfer: DataTransfer) {
+    const info = parseId(transfer);
+
+    return (
+      source === info?.source &&
+      Boolean(data().find(([, , id]) => id == info.id))
+    );
+  }
+
+  const controls: KvCopierControl = {
+    data,
+    addValues,
+    deleteDatum(transfer: DataTransfer) {
+      const info = parseId(transfer);
+      if (info?.source !== source) {
+        return;
+      }
+
+      setData((data) => data.filter(([, , id]) => id != info.id));
+    },
+    containsDatum,
+    deleteAll() {
+      setData([]);
+    },
+    drop(dataTransfer) {
+      const kvData = dataTransfer.getData("text/value");
+
+      if (kvData) {
+        if (containsDatum(dataTransfer)) {
+          return;
+        }
+
+        const data = KV.parse(kvData, "object");
+
+        addValues(data);
+        return true;
+      }
+
+      const data = dataTransfer.getData("text/plain");
+      try {
+        addValues(KV.parse(data, "object"));
+        return;
+      } catch (error) {
+        void error;
+        // continue
+      }
+
+      try {
+        const json = JSON.parse(data);
+        if (typeof json === "object") {
+          addValues(json);
+        }
+      } catch (error) {
+        void error;
+        // continue
+      }
+    },
+  };
+
+  return {
+    addValues,
+    data,
+    setData,
+    containsDatum,
+    controls,
+    source,
+  };
+}
+
 export default function KeyValueCopier(
-  props: {
-    data: Record<string, unknown>;
-    icon?: JSX.Element;
-  } & ComponentProps<"div">,
+  props: Omit<ComponentProps<"div">, "children"> & {
+    initialData?: KvEntry[];
+    readonly?: boolean;
+    values?: Record<string, unknown>;
+    init?(
+      copier: KvCopierControl,
+    ): Omit<Partial<ComponentProps<"div">>, "children">;
+    children?(copier: KvCopierControl): JSX.Element;
+  },
 ) {
-  const [, divProps] = splitProps(props, ["data"]);
+  const [, restProps] = splitProps(props, [
+    "initialData",
+    "readonly",
+    "values",
+  ]);
+
+  const context = makeKeyValueCopierContext(untrack(() => props.initialData));
+
+  const { setData, addValues } = context;
+
+  if (props.readonly) {
+    createEffect(
+      on(
+        () => props.values,
+        (values) => {
+          setData([]);
+          addValues(values);
+        },
+      ),
+    );
+  }
+  return <KeyValueCopierWidget {...restProps} context={context} />;
+}
+
+export function KeyValueCopierWidget(
+  props: Omit<ComponentProps<"div">, "children"> & {
+    context: KeyValueCopierContext;
+    children?(copier: KvCopierControl): JSX.Element;
+  },
+) {
+  const [, divProps] = splitProps(props, ["context", "children"]);
+
+  const { source, data, controls } = untrack(() => props.context);
 
   return (
     <div
@@ -32,10 +174,11 @@ export default function KeyValueCopier(
       classList={{ ...props.classList }}
     >
       <div class="flex flex-1 flex-col overflow-auto whitespace-pre">
-        <For each={Object.entries({ ...cleanObject(props.data) })}>
-          {([key, value]) => (
+        <For each={data()}>
+          {([key, value, id]) => (
             <div class="whitespace-pre font-mono" onClick={() => {}}>
               <KeyValueCopierNode
+                id={id + "/" + source}
                 tokens={KV.tokenize(KV.stringify({ [key]: value }, "\n", 2))}
               />
             </div>
@@ -48,12 +191,13 @@ export default function KeyValueCopier(
       <span class="value-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
         <IconTablerPlus />
       </span>
-      {props.icon}
+      {props.children?.(controls)}
     </div>
   );
 }
 
 function KeyValueCopierNode(props: {
+  id?: string;
   tokens: { token: string; span?: number; key?: string; value?: unknown }[];
 }) {
   const [key, ...eqvalue] = props.tokens;
@@ -121,6 +265,10 @@ function KeyValueCopierNode(props: {
               "text/value",
               KV.stringify({ [key.key]: key.value }),
             );
+
+            if (props.id) {
+              event.dataTransfer.setData("text/kv-id", props.id);
+            }
           },
           onClick: () => {
             window.navigator.clipboard.writeText(
@@ -155,4 +303,14 @@ function KeyValueCopierNode(props: {
       </span>
     </span>
   );
+}
+
+function parseId(transfer: DataTransfer) {
+  const idAndSource = transfer.getData("text/kv-id")?.split("/", 2);
+  if (!idAndSource) return {};
+  const [id, source] = idAndSource;
+  return {
+    id,
+    source,
+  };
 }

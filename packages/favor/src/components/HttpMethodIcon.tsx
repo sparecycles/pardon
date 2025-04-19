@@ -19,7 +19,11 @@ export default function HttpMethodIcon(
 ) {
   const [ourProps, iconProps] = splitProps(props, ["method"]);
   const iconClass = (colors) =>
-    twMerge("scale-[1.3] overflow-clip w-5 h-4 pr-1", colors, iconProps.class);
+    twMerge(
+      "scale-[1.3] translate-y-[-1.5px] overflow-clip w-5 h-4 pr-1",
+      colors,
+      iconProps.class,
+    );
   return (
     <span class="w-5">
       <Switch

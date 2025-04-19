@@ -24,6 +24,7 @@ import {
   on,
   Show,
   Switch,
+  untrack,
   VoidProps,
 } from "solid-js";
 import CodeMirror, {
@@ -40,7 +41,6 @@ import {
   HttpsRequestStep,
   HttpsResponseStep,
   KV,
-  valueId,
 } from "pardon/formats";
 import Toggle from "../components/Toggle.tsx";
 
@@ -57,7 +57,11 @@ import { Text } from "@codemirror/state";
 import { persistJson } from "../util/persistence.ts";
 
 import { animation } from "../components/animate.ts";
-import KeyValueCopier from "../components/KeyValueCopier.tsx";
+import KeyValueCopier, {
+  KeyValueCopierWidget,
+  KvEntry,
+  makeKeyValueCopierContext,
+} from "../components/KeyValueCopier.tsx";
 import settle from "../util/settle.ts";
 import { updateActiveTrace } from "../components/request-history.ts";
 
@@ -88,7 +92,7 @@ export default function Main(
   );
 
   const [scratchValues, setScratchValues] = makePersisted(
-    createSignal<Record<string, unknown>>({}),
+    createSignal<KvEntry[]>([]),
     { name: "scratch", ...persistJson },
   );
 
@@ -96,13 +100,13 @@ export default function Main(
 
   const [currentExecutionSource, setCurrentExecutionSource] =
     createSignal<PardonExecutionSource>({
-      http: http(),
+      http: untrack(http),
       values: { ...values() },
     });
 
   createEffect(
     on(
-      createMemo(() => [http(), values()] as const),
+      [http, values],
       ([http, values]) => {
         setCurrentExecutionSource({
           http,
@@ -114,8 +118,10 @@ export default function Main(
   );
 
   createEffect(
-    on(currentExecutionSource, () => {
+    on(currentExecutionSource, ({ http, values }) => {
       setHistory(undefined);
+      setHttp(http);
+      setValues(values);
     }),
   );
 
@@ -179,14 +185,14 @@ export default function Main(
     });
   }
 
-  function restoreFromHttp(content: string) {
+  function restoreFromHttp(content: string, values?: Record<string, unknown>) {
     const parsed = HTTP.parse(content);
     if (!parsed.origin && !parsed.values.endpoint) {
       return false;
     }
     const reformatted = HTTP.stringify({
       ...parsed,
-      values: localValues(parsed.values ?? {}),
+      values: { ...parsed.values, ...values },
     });
     setHttpInput(reformatted);
     return true;
@@ -238,8 +244,10 @@ export default function Main(
   function restoreFromHistory(history: ExecutionHistory) {
     if (history && requestResource.state === "ready") {
       const currentRequestResult = requestResource();
+
       if (currentRequestResult.status === "fulfilled") {
         const currentRequest = currentRequestResult.value;
+
         if (currentRequest.context.trace === history.context.trace) {
           setHistory(undefined);
           return;
@@ -359,9 +367,30 @@ ${request.reason}
     if (key?.startsWith("endpoint:")) return key;
   });
 
-  function localValues(values: Record<string, unknown>) {
-    return values;
-  }
+  const scratchValuesContext = makeKeyValueCopierContext(scratchValues());
+
+  createEffect(
+    on(scratchValuesContext.data, (data) => setScratchValues(data), {
+      defer: true,
+    }),
+  );
+
+  const scratchDropTarget = {
+    onDragOver(event) {
+      if (
+        event.dataTransfer.types.some((type) =>
+          ["text/value", "text/plain"].includes(type),
+        )
+      ) {
+        event.preventDefault();
+      }
+    },
+    onDrop(event) {
+      if (scratchValuesContext.controls.drop(event.dataTransfer)) {
+        event.preventDefault();
+      }
+    },
+  };
 
   const active = createMemo(() => {
     const result = previewResource.latest;
@@ -438,7 +467,6 @@ ${request.reason}
       <Resizable.Panel
         class="flex size-full min-h-0 flex-1 flex-col"
         initialSize={0.7}
-        minSize={"50px"}
       >
         <Resizable orientation="horizontal">
           <Resizable.Panel initialSize={0.2}>
@@ -446,7 +474,7 @@ ${request.reason}
               selection={selection()}
               filters={{
                 endpoint: true,
-                other: false,
+                other: true,
                 flow: false,
               }}
               expanded={new Set()}
@@ -468,11 +496,12 @@ ${request.reason}
               onDblClick={(key, info) => {
                 const { type, archetype: preview } = info ?? {};
 
-                setCollectionItem({ ...info, key });
-
-                if (type === "endpoint") {
-                  restoreFromHttp(preview);
-                }
+                batch(() => {
+                  setCollectionItem({ ...info, key });
+                  if (type === "endpoint") {
+                    restoreFromHttp(preview, values());
+                  }
+                });
               }}
             />
           </Resizable.Panel>
@@ -591,7 +620,7 @@ ${request.reason}
                           const http = event.dataTransfer.getData("text/http");
 
                           if (http) {
-                            restoreFromHttp(http);
+                            restoreFromHttp(http, values());
                             event.preventDefault();
                             return;
                           }
@@ -730,18 +759,8 @@ ${request.reason}
                                 const { outbound, context, error } =
                                   history() ?? latestRequest() ?? {};
 
-                                if (error) {
-                                  try {
-                                    const { action, step, stack } =
-                                      JSON.parse(error);
-                                    if (step === "sync") {
-                                      return previousRequest ?? "";
-                                    }
-                                    return `${action}@${step}\n${stack}`;
-                                  } catch (oops) {
-                                    void oops;
-                                    return String(error);
-                                  }
+                                if (error && !outbound) {
+                                  return error;
                                 }
 
                                 if (!outbound) {
@@ -792,6 +811,9 @@ ${request.reason}
                                         "HEAD",
                                         "OPTIONS",
                                       ].includes(requestUri().method),
+                                      "light:bg-red-300 dark:bg-fuchsia-900": [
+                                        "DELETE",
+                                      ].includes(requestUri().method),
                                     }}
                                     onClick={() => {
                                       if (requestNotReady()) {
@@ -840,6 +862,7 @@ ${request.reason}
                                         const { http, values } =
                                           displayedExecutionSource();
 
+                                        console.log("restore", http, values);
                                         setHttp(http);
                                         setValues({ ...values });
 
@@ -900,12 +923,15 @@ ${request.reason}
                                   <Match when={view() == "values"}>
                                     <KeyValueCopier
                                       class="p-1"
-                                      data={
-                                        responseResource.latest?.status ===
-                                        "fulfilled"
-                                          ? responseResource.latest.value
-                                              .inbound.values
-                                          : {}
+                                      readonly
+                                      values={
+                                        history()
+                                          ? history().inbound?.values
+                                          : responseResource.latest?.status ===
+                                              "fulfilled"
+                                            ? responseResource.latest.value
+                                                .inbound.values
+                                            : {}
                                       }
                                     />
                                   </Match>
@@ -963,7 +989,7 @@ ${request.reason}
         </Resizable>
       </Resizable.Panel>
       <Resizable.Handle />
-      <Resizable.Panel initialSize={0.3} minSize={"100px"}>
+      <Resizable.Panel initialSize={0.3}>
         <MultiView
           view={subPanelView()}
           onChange={setSubPanelView}
@@ -980,10 +1006,13 @@ ${request.reason}
               editor: <IconTablerPencil />,
             } as const
           }
+          controlProps={{
+            scratch: scratchDropTarget,
+          }}
           class="mih-h-0 size-full"
         >
           {([view]) => (
-            <div class="relative flex size-full min-h-0 flex-1 flex-row">
+            <div class="relative flex size-full flex-1 flex-row">
               <div class="flex min-h-0 flex-col gap-1 border-r-1 border-neutral-300 p-1 dark:border-neutral-500">
                 <MultiView.Controls class="flex flex-initial flex-col p-1 text-xl [&.multiview-selected]:bg-lime-400 [&.multiview-selected]:dark:bg-cyan-500" />
                 <Toggle
@@ -1003,8 +1032,11 @@ ${request.reason}
                   )}
                 </Toggle>
               </div>
-              <Resizable>
-                <Resizable.Panel initialSize={0.8} class="flex">
+              <Resizable class="">
+                <Resizable.Panel
+                  initialSize={0.8}
+                  class="flex size-0 min-h-full min-w-full flex-1"
+                >
                   <Switch>
                     <Match when={view() === "editor"}>
                       <AssetEditor id={asset()} />
@@ -1022,82 +1054,67 @@ ${request.reason}
                       />
                     </Match>
                     <Match when={view() === "scratch"}>
-                      <KeyValueCopier
-                        class="bg-neutral-200 p-1 dark:bg-stone-800"
-                        data={scratchValues()}
-                        onDragOver={(event) => {
-                          if (event.dataTransfer.types.includes("text/value")) {
-                            event.preventDefault();
-                          }
+                      <KeyValueCopierWidget
+                        class="flex size-0 min-h-full min-w-full overflow-auto bg-neutral-200 p-1 dark:bg-stone-800"
+                        {...scratchDropTarget}
+                        context={scratchValuesContext}
+                      >
+                        {({ data, deleteDatum, deleteAll }) => {
+                          createEffect(
+                            on(data, (data) => setScratchValues(data), {
+                              defer: true,
+                            }),
+                          );
+
+                          return (
+                            <>
+                              <div
+                                class="pointer-events-none absolute inset-x-0 bottom-1 flex place-content-center opacity-100 transition-opacity duration-700"
+                                classList={{
+                                  "!opacity-0":
+                                    Object.keys(scratchValues() ?? {}).length ==
+                                    0,
+                                }}
+                              >
+                                <button
+                                  class="flex-0 pointer-events-auto p-1 transition-colors duration-300 hover:bg-fuchsia-300 dark:hover:bg-pink-500 [&.drop]:!bg-fuchsia-300 [&.drop]:dark:!bg-pink-500"
+                                  classList={{
+                                    "!pointer-events-none":
+                                      Object.keys(scratchValues() ?? {})
+                                        .length == 0,
+                                  }}
+                                  onClick={() => deleteAll()}
+                                  onDragOver={(event) => {
+                                    if (
+                                      event.dataTransfer.types.includes(
+                                        "text/value",
+                                      )
+                                    ) {
+                                      event.preventDefault();
+                                      event.target.classList.add("drop");
+                                    }
+                                  }}
+                                  onDragEnter={function (event) {
+                                    event.target.classList.add("drop");
+                                  }}
+                                  onDragLeave={function (event) {
+                                    event.target.classList.remove("drop");
+                                  }}
+                                  onDrop={(event) => {
+                                    deleteDatum(event.dataTransfer);
+
+                                    // eat the event to prevent reapplying the value.
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                  }}
+                                >
+                                  <IconTablerTrash class="pointer-events-none" />
+                                </button>
+                              </div>
+                            </>
+                          );
                         }}
-                        onDrop={(event) => {
-                          const kvData =
-                            event.dataTransfer.getData("text/value");
-                          if (kvData) {
-                            event.preventDefault();
-                            const data = KV.parse(kvData, "object");
-                            setScratchValues((current) => ({
-                              ...current,
-                              ...data,
-                            }));
-                          }
-                        }}
-                        icon={
-                          <div
-                            class="absolute inset-x-0 bottom-1 flex place-content-center opacity-100 transition-opacity duration-700"
-                            classList={{
-                              "!opacity-0 pointer-events-none":
-                                Object.keys(scratchValues() ?? {}).length == 0,
-                            }}
-                          >
-                            <button
-                              class="flex-0 p-1 transition-colors duration-300 hover:bg-fuchsia-300 dark:hover:bg-pink-500 [&.drop]:!bg-fuchsia-300 [&.drop]:dark:!bg-pink-500"
-                              onClick={() => setScratchValues({})}
-                              onDragOver={(event) => {
-                                if (
-                                  event.dataTransfer.types.includes(
-                                    "text/value",
-                                  )
-                                ) {
-                                  event.preventDefault();
-                                  event.target.classList.add("drop");
-                                }
-                              }}
-                              onDragEnter={function (event) {
-                                event.target.classList.add("drop");
-                              }}
-                              onDragLeave={function (event) {
-                                event.target.classList.remove("drop");
-                              }}
-                              onDrop={(event) => {
-                                const kvValue =
-                                  event.dataTransfer.getData("text/value");
-
-                                const datum = KV.parse(kvValue, "object");
-
-                                const values = scratchValues();
-
-                                for (const [k, v] of Object.entries(datum)) {
-                                  if (
-                                    values[k] !== undefined &&
-                                    valueId(values[k]) === valueId(v)
-                                  ) {
-                                    setScratchValues(
-                                      ({ [k]: _, ...rest }) => rest,
-                                    );
-                                  }
-                                }
-
-                                // eat the event to prevent reapplying the value.
-                                event.preventDefault();
-                                event.stopPropagation();
-                              }}
-                            >
-                              <IconTablerTrash class="pointer-events-none" />
-                            </button>
-                          </div>
-                        }
-                      />
+                      </KeyValueCopierWidget>
                     </Match>
                   </Switch>
                 </Resizable.Panel>
