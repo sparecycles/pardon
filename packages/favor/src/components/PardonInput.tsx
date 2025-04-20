@@ -130,10 +130,6 @@ export default function PardonInput(
     }),
   );
 
-  createEffect(() => {
-    console.log("cm disabled", codemirrorProps.disabled);
-  });
-
   return (
     <CodeMirror
       {...codemirrorProps}

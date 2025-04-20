@@ -12,11 +12,7 @@ governing permissions and limitations under the License.
 
 import {
   ComponentProps,
-  createEffect,
   createMemo,
-  createSignal,
-  For,
-  on,
   Show,
   splitProps,
   JSX,
@@ -24,13 +20,13 @@ import {
   Match,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
-import Toggle from "./Toggle.tsx";
 import HttpMethodIcon from "./HttpMethodIcon.tsx";
 import LoadingSplash from "./LoadingSplash.tsx";
 import { Trace } from "./request-history.ts";
 import { displayHttp } from "./display-util.ts";
 import { HTTP } from "pardon/formats";
 import { recv } from "pardon/utils";
+import KeyValueCopier from "./KeyValueCopier.tsx";
 
 export type HistoryTree = {
   trace: number;
@@ -41,35 +37,24 @@ export type HistoryTree = {
 export function RequestSummaryTree(props: {
   traces: Record<number, Trace>;
   node: HistoryTree;
-  path?: number[];
   expandedSet: Set<string>;
   isCurrent(trace: number): boolean;
   onRestore(history: ExecutionHistory): void;
   clearTrace?(trace: number): void;
 }) {
-  const path = createMemo(() => [...(props.path ?? []), props.node.trace]);
+  const trace = createMemo(() => recv(props.traces[props.node.trace]));
   return (
     <RequestSummaryNode
       {...props}
-      path={path()}
-      trace={recv(props.traces[props.node.trace])}
+      trace={trace()}
       current={props.isCurrent(Number(props.node.trace))}
       auto={props.node.auto}
-      exapandable={props.node.deps.length > 0}
     >
-      <For each={props.node.deps}>
-        {(node) => (
-          <RequestSummaryTree
-            traces={props.traces}
-            node={node}
-            isCurrent={props.isCurrent}
-            path={path()}
-            expandedSet={props.expandedSet}
-            onRestore={props.onRestore}
-            clearTrace={props.clearTrace}
-          />
-        )}
-      </For>
+      <KeyValueCopier
+        values={trace().result?.inbound?.flow}
+        readonly
+        class="pl-4"
+      />
     </RequestSummaryNode>
   );
 }
@@ -78,95 +63,29 @@ export function RequestSummaryNode(props: {
   trace: Trace;
   current?: boolean;
   auto?: boolean;
-  path: number[];
-  expandedSet: Set<string>;
   children?: JSX.Element;
-  fallback?: JSX.Element;
-  exapandable?: boolean;
   note?: JSX.Element;
   onRestore(history: ExecutionHistory): void;
   clearTrace?(trace: number): void;
 }) {
-  const depth = createMemo(() => props.path?.length ?? 0);
-  const pathkey = createMemo(() => props.path.join(":"));
-  const [expanded, setExpanded] = createSignal(
-    props.expandedSet.has(pathkey()),
-  );
-
-  createEffect(
-    on(
-      expanded,
-      (exp) => {
-        if (exp) props.expandedSet.add(pathkey());
-        else props.expandedSet.delete(pathkey());
-      },
-      { defer: true },
-    ),
-  );
-
   return (
     <li
       class="flex flex-1 flex-col"
       classList={{
-        "opacity-75": depth() == 0 && !props.trace?.tlr,
+        "opacity-75": !props.trace?.tlr,
       }}
     >
-      <Show
-        when={props.exapandable}
-        fallback={
-          <>
-            <span
-              class="flex flex-1 flex-row pl-1"
-              classList={{
-                "pl-4": depth() > 0,
-              }}
-            >
-              <RequestSummary
-                trace={props.trace}
-                onRestore={props.onRestore}
-                clearTrace={props.clearTrace}
-                auto={props.auto}
-                note={props.note}
-                current={props.current}
-              />
-            </span>
-            {props.fallback ? <ul class="pl-3">{props.fallback}</ul> : <></>}
-          </>
-        }
-      >
-        <div class="flex flex-row">
-          <Toggle
-            class="w-4 bg-transparent p-0 active:!bg-transparent"
-            value={expanded()}
-            onChange={setExpanded}
-          >
-            {(props) => (
-              <IconTablerChevronRight
-                class="relative inline rotate-0 transition-transform duration-200"
-                classList={{
-                  "rotate-90": props.value,
-                }}
-              />
-            )}
-          </Toggle>
-          <RequestSummary
-            trace={props.trace}
-            onRestore={props.onRestore}
-            clearTrace={props.clearTrace}
-            note={props.note}
-            current={props.current}
-          />
-        </div>
-
-        <Show
-          when={expanded()}
-          fallback={
-            props.fallback ? <ul class="pl-3">{props.fallback}</ul> : <></>
-          }
-        >
-          {props.children ? <ul class="pl-3">{props.children}</ul> : undefined}
-        </Show>
-      </Show>
+      <div class="flex w-full flex-1 flex-col pl-1">
+        <RequestSummary
+          trace={props.trace}
+          onRestore={props.onRestore}
+          clearTrace={props.clearTrace}
+          auto={props.auto}
+          note={props.note}
+          current={props.current}
+        />
+        {props.children}
+      </div>
     </li>
   );
 }

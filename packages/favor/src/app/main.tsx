@@ -184,6 +184,7 @@ export default function Main(
       inbound: {
         response,
         values: {},
+        flow: {},
       },
       endpoint: undefined!,
       outcome: undefined!,
@@ -1161,7 +1162,7 @@ ${request.reason}
         >
           {([view]) => (
             <div class="relative flex size-full flex-1 flex-row">
-              <div class="flex min-h-0 flex-col gap-1 border-r-1 border-neutral-300 p-1 dark:border-neutral-500">
+              <div class="flex min-h-0 flex-col gap-1 border-r-1 border-neutral-300 p-2 dark:border-neutral-500">
                 <MultiView.Controls class="flex flex-initial flex-col p-1 text-xl [&.multiview-selected]:bg-lime-400 [&.multiview-selected]:dark:bg-cyan-500" />
                 <Toggle
                   class="relative mt-auto bg-inherit p-1 text-xl mix-blend-normal dark:active:!bg-neutral-500"
@@ -1203,7 +1204,7 @@ ${request.reason}
                     </Match>
                     <Match when={view() === "scratch"}>
                       <KeyValueCopierWidget
-                        class="flex size-0 min-h-full min-w-full overflow-auto bg-neutral-200 p-1 dark:bg-stone-800"
+                        class="flex size-0 min-h-full min-w-full overflow-auto bg-neutral-200 p-2 dark:bg-stone-800"
                         {...scratchDropTarget}
                         context={scratchValuesContext}
                       >

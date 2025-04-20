@@ -548,6 +548,7 @@ export const PardonFetchExecution = pardonExecution({
         secrets: uncensored.values,
         redacted: redacted.output,
         values: redacted.values,
+        flow: redacted.evaluationScope.resolvedValues({ flow: true }),
       },
     };
   },

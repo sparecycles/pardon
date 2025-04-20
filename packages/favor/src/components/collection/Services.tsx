@@ -188,10 +188,10 @@ export default function Services(props: {
                       <IconTablerPlus />
                     </Dialog.Trigger>
                     <Dialog.Portal>
-                      <Dialog.Overlay />
-                      <Dialog.Content class="absolute inset-0 grid place-content-center bg-neutral-500/25">
-                        <div class="relative flex flex-col gap-2 rounded-sm border-2 border-neutral-400 bg-neutral-600 px-20 py-20">
-                          <div>Create an asset</div>
+                      <Dialog.Overlay class="absolute inset-0 bg-neutral-800 transition-opacity duration-1000 [&[data-closed]]:opacity-0 [&[data-open]]:opacity-25" />
+                      <Dialog.Content class="absolute inset-0 grid place-content-center">
+                        <div class="relative flex flex-col gap-2 rounded-lg border-2 bg-neutral-200 px-20 py-20 dark:border-neutral-400 dark:bg-neutral-600">
+                          <div>Create an asset (wip)</div>
                           <input class="w-full px-1"></input>
                           <div class="flex flex-1 place-content-between">
                             <Dialog.Close class="p-1">Cancel</Dialog.Close>

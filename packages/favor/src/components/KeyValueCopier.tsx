@@ -21,10 +21,11 @@ import {
   untrack,
   createEffect,
   on,
+  Show,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
 
-export type KvEntry = readonly [string, unknown, string];
+export type KvEntry = readonly [string, unknown, string?];
 
 type KvCopierControl = {
   data: Accessor<KvEntry[]>;
@@ -123,6 +124,7 @@ export default function KeyValueCopier(
   props: Omit<ComponentProps<"div">, "children"> & {
     initialData?: KvEntry[];
     readonly?: boolean;
+    noIcon?: boolean;
     values?: Record<string, unknown>;
     init?(
       copier: KvCopierControl,
@@ -145,8 +147,10 @@ export default function KeyValueCopier(
       on(
         () => props.values,
         (values) => {
-          setData([]);
-          addValues(values);
+          if (values) {
+            setData([]);
+            addValues(values);
+          }
         },
       ),
     );
@@ -157,6 +161,7 @@ export default function KeyValueCopier(
 export function KeyValueCopierWidget(
   props: Omit<ComponentProps<"div">, "children"> & {
     context: KeyValueCopierContext;
+    noIcon?: boolean;
     children?(copier: KvCopierControl): JSX.Element;
   },
 ) {
@@ -185,12 +190,14 @@ export function KeyValueCopierWidget(
           )}
         </For>
       </div>
-      <span class="copy-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
-        <IconTablerCopy />
-      </span>
-      <span class="value-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
-        <IconTablerPlus />
-      </span>
+      <Show when={!props.noIcon}>
+        <span class="copy-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
+          <IconTablerCopy />
+        </span>
+        <span class="value-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
+          <IconTablerPlus />
+        </span>
+      </Show>
       {props.children?.(controls)}
     </div>
   );

@@ -101,7 +101,7 @@ const tracingHooks = {
   },
   onResult({
     context: { awaited, trace, timestamps, durations },
-    inbound: { response, redacted, values, secrets, outcome },
+    inbound: { response, redacted, values, flow, secrets, outcome },
   }) {
     const payload = {
       trace,
@@ -114,6 +114,7 @@ const tracingHooks = {
         response: HTTP.responseObject.json(redacted),
         outcome,
         values,
+        flow,
       },
       secure: {
         inbound: {

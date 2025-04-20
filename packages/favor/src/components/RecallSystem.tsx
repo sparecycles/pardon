@@ -12,13 +12,7 @@ governing permissions and limitations under the License.
 
 import Resizable from "corvu/resizable";
 import ValuesInput from "./ValuesInput.tsx";
-import {
-  createMemo,
-  createResource,
-  createSignal,
-  For,
-  Suspense,
-} from "solid-js";
+import { createResource, createSignal, For, Show, Suspense } from "solid-js";
 import { HTTP, JSON, KV, ResponseJSON } from "pardon/formats";
 import LoadingSplash from "./LoadingSplash.tsx";
 import { makePersisted } from "@solid-primitives/storage";
@@ -122,10 +116,6 @@ export default function RecallSystem(props: {
                 const sortedValues =
                   Object.entries(values).sort(numericKeySort);
 
-                const shownValues = createMemo(() => {
-                  return sortedValues.slice(0, 1);
-                });
-
                 const trace = -http;
                 const durations = {};
                 const timestamps = {};
@@ -184,60 +174,25 @@ export default function RecallSystem(props: {
                         },
                       }}
                       onRestore={props.onRestore}
-                      fallback={
-                        <>
-                          <For each={shownValues()}>
-                            {([scope, data]) => (
-                              <>
-                                {scope ? (
-                                  <span class="block -skew-x-12 pt-1 text-xs">
-                                    {scope}
-                                  </span>
-                                ) : (
-                                  <></>
-                                )}
-                                <KeyValueCopier
-                                  readonly
-                                  values={data}
-                                  class="ml-2"
-                                  classList={{
-                                    "ml-4": Boolean(scope),
-                                  }}
-                                />
-                              </>
-                            )}
-                          </For>
-                          {sortedValues.length > 1 ? <>...</> : <></>}
-                        </>
-                      }
                       note={
                         <span class="font-mono">
                           {formatTimestamp(created_at)}
                         </span>
                       }
-                    >
-                      <For each={sortedValues}>
-                        {([scope, data]) => (
-                          <>
-                            {scope ? (
-                              <span class="block -skew-x-12 pt-1 text-xs">
-                                {scope}
-                              </span>
-                            ) : (
-                              <></>
-                            )}
-                            <KeyValueCopier
-                              readonly
-                              values={data}
-                              class="ml-2"
-                              classList={{
-                                "ml-4": Boolean(scope),
-                              }}
-                            />
-                          </>
-                        )}
-                      </For>
-                    </RequestSummaryNode>
+                      fallback={
+                        <div class="pl-2">
+                          <KeyValueCopier
+                            readonly
+                            initialData={sortedValues
+                              .slice(0, 3)
+                              .flatMap(([, keyvalue]) =>
+                                Object.entries(keyvalue),
+                              )}
+                          />
+                          <Show when={sortedValues.length > 3}>...</Show>
+                        </div>
+                      }
+                    ></RequestSummaryNode>
                   </>
                 );
               }}
