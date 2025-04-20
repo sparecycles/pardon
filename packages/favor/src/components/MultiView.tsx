@@ -29,7 +29,7 @@ import { twMerge } from "tailwind-merge";
 
 const MultiviewContext = createContext<{
   controls: Record<any, JSX.Element>;
-  controlProps?: Accessor<Partial<Record<any, any>>>;
+  controlProps?: Accessor<Partial<Record<any, ComponentProps<"button">>>>;
   disabled?: Accessor<boolean | Partial<Record<any, boolean>>>;
   viewSignal: Signal<any>;
   defaulting: Accessor<any[]>;
@@ -38,12 +38,18 @@ const MultiviewContext = createContext<{
 export default function MultiView<Value extends string>(
   props: {
     controls: Record<Value, JSX.Element>;
-    controlProps?: Partial<Record<NoInfer<Value>, any>>;
+    controlProps?:
+      | Partial<Record<NoInfer<Value>, ComponentProps<"button">>>
+      | {
+          (
+            viewSignal: Signal<NoInfer<Value>>,
+          ): Partial<Record<NoInfer<Value>, ComponentProps<"button">>>;
+        };
     view: NoInfer<Value>;
     disabled?: boolean | Partial<Record<NoInfer<Value>, boolean>>;
     onChange?: (value: NoInfer<Value>) => void;
     children: (viewSignal: Signal<NoInfer<Value>>) => JSX.Element;
-    defaulting?: Accessor<NoInfer<Value>[]>;
+    defaulting?: Accessor<readonly NoInfer<Value>[]>;
   } & Omit<ComponentProps<"div">, "children">,
 ) {
   const [contextProps, , divProps] = splitProps(
@@ -66,11 +72,13 @@ export default function MultiView<Value extends string>(
     <MultiviewContext.Provider
       value={{
         ...contextProps,
-        controlProps: createMemo(() => props.controlProps),
+        controlProps: createMemo(() => props.controlProps) as Accessor<
+          Record<any, ComponentProps<"button">>
+        >,
         disabled: createMemo(() => contextProps.disabled),
         viewSignal: [view, setView],
         defaulting: createMemo(
-          () => props.defaulting?.() ?? Object.keys(props.controls),
+          () => (props.defaulting?.() as any[]) ?? Object.keys(props.controls),
         ),
       }}
     >
@@ -98,7 +106,9 @@ export function Controls<Value extends string>(
     on(disabled, (disabled) => {
       if (disabled && typeof disabled === "object") {
         if (disabled[view()]) {
-          for (const key of defaulting()) {
+          const defaults = defaulting();
+
+          for (const key of defaults) {
             if (!disabled[key]) {
               setView(() => key as Value);
               return;
@@ -109,24 +119,38 @@ export function Controls<Value extends string>(
     }),
   );
 
+  const controlPropsObject = createMemo(() => {
+    const cp = controlProps();
+    if (!cp) return;
+    if (typeof cp === "function") {
+      return cp([view, setView]);
+    }
+    return cp;
+  });
+
   return (
     <For each={Object.entries(controls)}>
       {([key, control]) => (
         <button
           {...props}
-          {...controlProps()?.[key]}
+          {...controlPropsObject()?.[key]}
           class={twMerge(
             "multiview-button",
             props.class,
-            controlProps()?.class,
+            controlPropsObject()?.class,
           )}
           classList={{
             "multiview-selected": selected(key as Value),
             ...props.classList,
-            ...controlProps()?.[key]?.classList,
+            ...controlPropsObject()?.[key]?.classList,
           }}
           value={key}
-          onClick={() => setView(() => key as Value)}
+          onClick={(event) => {
+            controlPropsObject()?.[key]?.onClick?.(event);
+            if (!event.defaultPrevented) {
+              setView(() => key as Value);
+            }
+          }}
           disabled={
             disabled() ? disabled() === true || disabled()[key] || false : false
           }

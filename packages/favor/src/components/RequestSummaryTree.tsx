@@ -200,7 +200,7 @@ export function RequestSummary(
         classList={{
           "bg-transparent": !props.current,
           "bg-gray-400 bg-opacity-25": props.current,
-          "text-gray-400 dark:text-gray-500": props.auto,
+          "opacity-75": props.auto,
         }}
         onClick={() => {
           const {

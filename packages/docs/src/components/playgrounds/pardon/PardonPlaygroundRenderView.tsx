@@ -110,7 +110,7 @@ export default function PardonPlaygroundRenderView(
           <Show when={props.onRequest}>
             <button
               class="-m-1 rounded-md border-none bg-transparent p-1 leading-none transition-transform hover:bg-yellow-200 hover:rotate-12 dark:hover:bg-fuchsia-900"
-              onclick={() => {
+              onClick={() => {
                 props.onRequest?.();
               }}
             >
@@ -125,7 +125,7 @@ export default function PardonPlaygroundRenderView(
           <Show when={secretsEnabled}>
             <button
               class="-m-1 rounded-md border-none bg-transparent p-1 leading-none hover:bg-yellow-200 dark:hover:bg-fuchsia-900"
-              onmousedown={() =>
+              onMouseDown={() =>
                 secretsEnabled &&
                 setSecrets((value) => {
                   return !value;

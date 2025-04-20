@@ -121,6 +121,7 @@ export default function RecallSystem(props: {
 
                 const sortedValues =
                   Object.entries(values).sort(numericKeySort);
+
                 const shownValues = createMemo(() => {
                   return sortedValues.slice(0, 1);
                 });
@@ -141,11 +142,11 @@ export default function RecallSystem(props: {
                   <>
                     <RequestSummaryNode
                       expandedSet={new Set()}
-                      exapandable={sortedValues.length > 1}
                       current={props.isCurrent(trace)}
-                      path={[-1]}
+                      path={[]}
                       trace={{
                         trace,
+                        tlr: true,
                         start: {
                           trace,
                           context: {
@@ -196,9 +197,11 @@ export default function RecallSystem(props: {
                                   <></>
                                 )}
                                 <KeyValueCopier
+                                  readonly
                                   values={data}
+                                  class="ml-2"
                                   classList={{
-                                    "ml-2": Boolean(scope),
+                                    "ml-4": Boolean(scope),
                                   }}
                                 />
                               </>
@@ -224,9 +227,11 @@ export default function RecallSystem(props: {
                               <></>
                             )}
                             <KeyValueCopier
+                              readonly
                               values={data}
+                              class="ml-2"
                               classList={{
-                                "ml-2": Boolean(scope),
+                                "ml-4": Boolean(scope),
                               }}
                             />
                           </>

@@ -31,7 +31,7 @@ import CodeMirror, {
   EditorView,
 } from "../components/codemirror/CodeMirror.tsx";
 import Resizable from "@corvu/resizable";
-import DataInput from "../components/DataInput.tsx";
+import PardonInput from "../components/PardonInput.tsx";
 import { executionMemo } from "../signals/pardon-execution-signal.ts";
 
 import {
@@ -73,8 +73,13 @@ export default function Main(
   }>,
 ) {
   const [subPanelView, setSubPanelView] = makePersisted(
-    createSignal<"history" | "recall" | "editor">("history"),
-    { name: "view", ...persistJson },
+    createSignal<"history" | "recall" | "scratch" | "editor">("history"),
+    { name: "view" },
+  );
+
+  const [executionView, setExecutionView] = makePersisted(
+    createSignal<"preview" | "outbound" | "inbound" | "values">("preview"),
+    { name: "execution-view" },
   );
   const [redacted, setRedacted] = createSignal(true);
   const [relock, setRelock] = createSignal(true);
@@ -119,7 +124,7 @@ export default function Main(
 
   createEffect(
     on(currentExecutionSource, ({ http, values }) => {
-      setHistory(undefined);
+      setHistory();
       setHttp(http);
       setValues(values);
     }),
@@ -220,18 +225,41 @@ export default function Main(
     },
   );
 
-  const [previewResource] = createResource(
+  const [previewResource, resetPreviewResource] = createResource(
     currentExecution,
     async ({ preview }) => {
       return await settle(preview);
     },
   );
 
-  const [requestResource] = createResource(
+  createEffect(
+    on(history, (history) => {
+      if (history) {
+        resetPreviewResource.mutate({ status: "rejected", reason: "history" });
+      } else {
+        resetPreviewResource.refetch(currentExecution());
+      }
+    }),
+  );
+
+  const [requestResource, resetRequestResource] = createResource(
     currentExecution,
     async ({ request }) => {
       return await settle(request);
     },
+  );
+
+  createEffect(
+    on(history, (history) => {
+      if (history) {
+        resetRequestResource.mutate({
+          value: history as any,
+          status: "fulfilled",
+        });
+      } else {
+        resetRequestResource.refetch(currentExecution());
+      }
+    }),
   );
 
   const [responseResource] = createResource(
@@ -249,7 +277,8 @@ export default function Main(
         const currentRequest = currentRequestResult.value;
 
         if (currentRequest.context.trace === history.context.trace) {
-          setHistory(undefined);
+          setHistory();
+
           return;
         }
       }
@@ -405,14 +434,10 @@ ${request.reason}
     return new Set<string>();
   });
 
-  const currentTrace = createMemo((previousTrace) => {
+  const currentTrace = createMemo(() => {
     const currentHistory = history();
     if (currentHistory) {
       return Number(currentHistory.context.trace);
-    }
-
-    if (requestResource.state !== "ready") {
-      return previousTrace;
     }
 
     const render = requestResource.latest;
@@ -425,7 +450,7 @@ ${request.reason}
     return request.context.trace;
   });
 
-  createMemo(() => {
+  createEffect(() => {
     if (contextResource.state === "ready") {
       const contextValue = contextResource();
       if (contextValue.status === "fulfilled") {
@@ -454,6 +479,7 @@ ${request.reason}
 
   const newRequestDisabled = createMemo<boolean>((wasDisabled) => {
     return (
+      Boolean(history()) ||
       requestDisabled() ||
       (requestResource.state === "ready" &&
       currentExecution().progress === "pending"
@@ -461,6 +487,15 @@ ${request.reason}
         : wasDisabled)
     );
   });
+
+  function refreshRequest() {
+    batch(() => {
+      const { http, values } = displayedExecutionSource();
+
+      setHttp(http);
+      setValues({ ...values });
+    });
+  }
 
   return (
     <Resizable orientation="vertical">
@@ -521,11 +556,12 @@ ${request.reason}
                     initialSize={0.6}
                     class="flex flex-grow-0 flex-col"
                   >
-                    <DataInput
+                    <PardonInput
                       class="w-0 min-w-full flex-1 overflow-auto bg-yellow-100 dark:bg-stone-700 [&_.cm-line]:pr-8"
                       editorViewRef={(view) => (httpInputEditorView = view)}
                       defaultValue={httpInitialValue()}
                       setTextRef={(setText) => (setHttpInput = setText)}
+                      disabled={Boolean(history())}
                       data={{
                         values,
                         doc: http,
@@ -576,6 +612,33 @@ ${request.reason}
                       }}
                       overlay={
                         <>
+                          <Show when={Boolean(history())}>
+                            <div class="absolute inset-0 grid place-content-center align-middle">
+                              <button
+                                class="relative z-10 p-3"
+                                onclick={() => {
+                                  switch (currentExecution()?.progress) {
+                                    case "complete":
+                                    case "errored":
+                                      break;
+                                    case "failed":
+                                    case "preview":
+                                      setExecutionView("preview");
+                                      break;
+                                    case "inflight":
+                                    case "rendering":
+                                    case "pending":
+                                      setExecutionView("outbound");
+                                      break;
+                                  }
+                                  setHistory();
+                                }}
+                              >
+                                <IconTablerArrowBackUp class="absolute -left-2 -top-2" />
+                                <IconTablerPencil />
+                              </button>
+                            </div>
+                          </Show>
                           <CornerControls
                             placement="tr"
                             flex="col"
@@ -584,7 +647,7 @@ ${request.reason}
                             actions={{
                               copy: () => {
                                 navigator.clipboard.writeText(
-                                  `${KV.stringify({ ...currentExecutionSource().values }, "\n", 2, "\n\n")}${http()}`,
+                                  `${KV.stringify({ ...currentExecutionSource().values }, "\n", 2, "\n")}${http()}`,
                                 );
                               },
                             }}
@@ -645,15 +708,22 @@ ${request.reason}
                     <>
                       <div class="flex size-0 min-h-full min-w-full flex-row">
                         <MultiView
-                          view={"outbound"}
+                          view={executionView()}
+                          onChange={setExecutionView}
                           controls={{
-                            preview: <IconTablerCode />,
+                            preview: (
+                              <Show
+                                when={!history()}
+                                fallback={<IconTablerPencil />}
+                              >
+                                <IconTablerCode />
+                              </Show>
+                            ),
                             outbound: <IconTablerUpload />,
                             inbound: <IconTablerDownload />,
                             values: <IconTablerReceipt />,
                           }}
                           disabled={{
-                            preview: Boolean(history()),
                             inbound:
                               !history() && responseResource.state !== "ready",
                             values:
@@ -661,46 +731,66 @@ ${request.reason}
                               (responseResource.state !== "ready" ||
                                 responseResource().status !== "fulfilled"),
                           }}
-                          defaulting={() => [
-                            "outbound",
-                            "inbound",
-                            "preview",
-                            "values",
-                          ]}
+                          controlProps={([, setView]) => ({
+                            preview: {
+                              onClick: (event) => {
+                                if (!history()) {
+                                  return;
+                                }
+
+                                batch(() => {
+                                  setView("preview");
+                                  const { http, values } =
+                                    displayedExecutionSource();
+
+                                  setHttp(http);
+                                  setValues({ ...values });
+                                  setHistory();
+                                });
+                                event.preventDefault();
+                              },
+                            },
+                            values: scratchDropTarget,
+                          })}
+                          defaulting={createMemo(() => {
+                            switch (currentExecution()?.progress) {
+                              case "rendering":
+                              case "pending":
+                                return ["outbound", "preview"] as const;
+                              case "complete":
+                                return [
+                                  "values",
+                                  "inbound",
+                                  "outbound",
+                                  "preview",
+                                ] as const;
+                              case "preview":
+                                return ["preview"] as const;
+                              default:
+                                return;
+                            }
+                          })}
                           class="flex size-full flex-col"
                         >
                           {([view, setView]) => {
-                            const requestUri = createMemo(() => {
-                              const currentHistory = history();
-                              if (currentHistory) {
-                                const { method, url } =
-                                  currentHistory.outbound.request;
-                                return { method, url };
-                              }
+                            createEffect(
+                              on(
+                                [currentExecution, view, history],
+                                ([execution, view, history]) => {
+                                  if (!history && view === "outbound") {
+                                    execution.render();
+                                  }
+                                },
+                              ),
+                            );
 
-                              var rendered =
-                                requestResource.latest?.status === "fulfilled"
-                                  ? requestResource.latest.value
-                                  : previewResource.latest?.status ===
-                                      "fulfilled"
-                                    ? previewResource.latest.value
-                                    : null;
-                              if (rendered) {
-                                const {
-                                  method,
-                                  origin,
-                                  pathname,
-                                  searchParams,
-                                } = HTTP.parse(rendered.http);
-
-                                return {
-                                  method,
-                                  url: `${origin}${pathname}${searchParams}`,
-                                };
-                              }
-
-                              return { method: null, url: "" };
-                            });
+                            createEffect(
+                              on([history], ([history]) => {
+                                if (history && view() === "preview") {
+                                  setView("outbound");
+                                }
+                              }),
+                            );
 
                             const currentPreview = createMemo(
                               (previousRequest: string) => {
@@ -722,6 +812,8 @@ ${request.reason}
 
                                 if (!previewResult.reason) {
                                   return "";
+                                } else if (previewResult.reason === "history") {
+                                  return currentRequest();
                                 }
 
                                 try {
@@ -736,6 +828,64 @@ ${request.reason}
                                   void oops;
                                   return String(previewResult.reason);
                                 }
+                              },
+                            );
+
+                            const requestUri = createMemo(
+                              (previousRequestUri) => {
+                                const currentHistory = history();
+                                if (currentHistory) {
+                                  const { method, url } =
+                                    currentHistory.outbound.request;
+                                  return { method, url };
+                                }
+
+                                var rendered =
+                                  requestResource.latest?.status === "fulfilled"
+                                    ? requestResource.latest.value
+                                    : previewResource.latest?.status ===
+                                        "fulfilled"
+                                      ? previewResource.latest.value
+                                      : null;
+                                if (rendered?.http) {
+                                  const {
+                                    method,
+                                    origin,
+                                    pathname,
+                                    searchParams,
+                                  } = HTTP.parse(rendered.http);
+
+                                  return {
+                                    method,
+                                    url: `${origin}${pathname}${searchParams}`,
+                                  };
+                                }
+
+                                try {
+                                  const previewResult = previewResource();
+                                  if (previewResult.status === "fulfilled") {
+                                    const {
+                                      method,
+                                      origin,
+                                      pathname,
+                                      searchParams,
+                                    } = HTTP.parse(previewResult.value.http);
+
+                                    return {
+                                      method,
+                                      url: `${origin}${pathname}${searchParams}`,
+                                    };
+                                  } else if (
+                                    previewResult.reason === "history"
+                                  ) {
+                                    return previousRequestUri;
+                                  }
+                                } catch (error) {
+                                  void error;
+                                  // continue
+                                }
+
+                                return { method: null, url: "" };
                               },
                             );
 
@@ -754,45 +904,56 @@ ${request.reason}
                               return request.value;
                             });
 
-                            const currentRequest = createMemo(
-                              (previousRequest: string) => {
-                                const { outbound, context, error } =
-                                  history() ?? latestRequest() ?? {};
+                            const currentRequestMemo = createMemo<{
+                              request?: string;
+                              error?: string;
+                            }>((previous = {}) => {
+                              const { outbound, context, error } =
+                                history() ?? latestRequest() ?? {};
 
-                                if (error && !outbound) {
-                                  return error;
+                              if (error && !outbound) {
+                                return { error };
+                              }
+
+                              if (!outbound) {
+                                if (
+                                  requestResource.state === "refreshing" ||
+                                  requestResource.state === "pending"
+                                ) {
+                                  return { request: previous.request };
                                 }
 
-                                if (!outbound) {
-                                  if (
-                                    requestResource.state === "refreshing" ||
-                                    requestResource.state === "pending"
-                                  ) {
-                                    return previousRequest ?? "";
-                                  }
+                                return { request: "" };
+                              }
 
-                                  return "";
-                                }
+                              const requestObject = HTTP.requestObject.fromJSON(
+                                {
+                                  ...(redacted()
+                                    ? outbound
+                                    : (secureData()[context.trace]?.outbound ??
+                                      outbound)
+                                  )?.request,
+                                  values: {},
+                                },
+                              );
 
-                                const requestObject =
-                                  HTTP.requestObject.fromJSON({
-                                    ...(redacted()
-                                      ? outbound
-                                      : (secureData()[context.trace]
-                                          ?.outbound ?? outbound)
-                                    )?.request,
-                                    values: {},
-                                  });
-
-                                if (curl()) {
-                                  return CURL.stringify(requestObject, {
+                              if (curl()) {
+                                return {
+                                  request: CURL.stringify(requestObject, {
                                     include: includeHeaders(),
-                                  });
-                                }
+                                  }),
+                                };
+                              }
 
-                                return HTTP.stringify(requestObject);
-                              },
-                            );
+                              return {
+                                request: HTTP.stringify(requestObject),
+                              };
+                            });
+
+                            const currentRequest = createMemo(() => {
+                              const { request, error } = currentRequestMemo();
+                              return error ?? request;
+                            });
 
                             return (
                               <>
@@ -857,41 +1018,28 @@ ${request.reason}
 
                                   <button
                                     class="ml-1.5 aspect-square flex-initial p-1 text-xl"
-                                    onclick={() =>
-                                      batch(() => {
-                                        const { http, values } =
-                                          displayedExecutionSource();
-
-                                        console.log("restore", http, values);
-                                        setHttp(http);
-                                        setValues({ ...values });
-
-                                        setView((view) => {
-                                          if (view === "inbound") {
-                                            return "outbound";
-                                          }
-                                          return view;
-                                        });
-                                      })
-                                    }
-                                  >
-                                    <Switch
-                                      fallback={
-                                        <span
-                                          use:animation={[
-                                            "animate-cw-spin",
-                                            () => requestResource?.loading,
-                                          ]}
-                                          class="smoothed-backdrop !bg-opacity-50"
-                                        >
-                                          <IconTablerReload />
-                                        </span>
+                                    disabled={Boolean(history())}
+                                    onClick={() => {
+                                      if (history()) {
+                                        setView("preview");
+                                        setHistory();
+                                      } else {
+                                        refreshRequest();
+                                        setView("outbound");
                                       }
+                                    }}
+                                  >
+                                    <span
+                                      use:animation={[
+                                        "animate-cw-spin",
+                                        () =>
+                                          currentExecution()?.progress ===
+                                          "rendering",
+                                      ]}
+                                      class="smoothed-backdrop !bg-opacity-50"
                                     >
-                                      <Match when={history()}>
-                                        <IconTablerPencil />
-                                      </Match>
-                                    </Switch>
+                                      <IconTablerReload />
+                                    </span>
                                   </button>
                                 </div>
                                 <Switch>

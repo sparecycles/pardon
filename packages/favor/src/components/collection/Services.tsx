@@ -17,6 +17,7 @@ import type { AssetSource, AssetType, AssetInfo } from "pardon/runtime";
 import { CollectionTreeItem, Filters } from "./collection-tree-types.ts";
 import CornerControls from "../CornerControls.tsx";
 import { animation } from "../animate.ts";
+import Dialog from "corvu/dialog";
 
 void animation; // used via use:animation
 
@@ -175,13 +176,31 @@ export default function Services(props: {
 
   return (
     <div class="flex size-full min-h-0 flex-1 flex-col font-mono">
-      <div class="grid grid-flow-row overflow-auto">
+      <div class="flex flex-col overflow-y-auto overflow-x-hidden">
         <For each={collection()}>
           {(item) => {
             return (
               <>
-                <div class="mb-1 border-t-[0.125rem] px-1 text-sm font-bold dark:border-slate-400 dark:bg-slate-600 [&:not(:first-child)]:mt-3">
+                <div class="smb-1 relative border-t-[0.125rem] px-1 pb-1 text-sm font-bold dark:border-slate-400 dark:bg-slate-600 [&:not(:first-child)]:mt-3">
                   {item.name}
+                  <Dialog>
+                    <Dialog.Trigger class="absolute right-1 top-0.5 bg-transparent p-0">
+                      <IconTablerPlus />
+                    </Dialog.Trigger>
+                    <Dialog.Portal>
+                      <Dialog.Overlay />
+                      <Dialog.Content class="absolute inset-0 grid place-content-center bg-neutral-500/25">
+                        <div class="relative flex flex-col gap-2 rounded-sm border-2 border-neutral-400 bg-neutral-600 px-20 py-20">
+                          <div>Create an asset</div>
+                          <input class="w-full px-1"></input>
+                          <div class="flex flex-1 place-content-between">
+                            <Dialog.Close class="p-1">Cancel</Dialog.Close>
+                            <Dialog.Close class="p-1">Create</Dialog.Close>
+                          </div>
+                        </div>
+                      </Dialog.Content>
+                    </Dialog.Portal>
+                  </Dialog>
                 </div>
                 <CollectionTreeView
                   class="text-sm"

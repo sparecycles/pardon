@@ -169,9 +169,9 @@ export function KeyValueCopierWidget(
       {...divProps}
       class={twMerge(
         "relative flex flex-1 overflow-hidden [&:has(.copyable-object>.key:hover,.copyable-value:hover,.variable>.key:hover)>.copy-icon]:opacity-50",
-        divProps.class,
+        props.class,
       )}
-      classList={{ ...props.classList }}
+      classList={props.classList}
     >
       <div class="flex flex-1 flex-col overflow-auto whitespace-pre">
         <For each={data()}>

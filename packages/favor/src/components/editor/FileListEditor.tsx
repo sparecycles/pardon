@@ -99,7 +99,7 @@ export function FileEditor(props: {
         onValueChange={setContent}
         tabbing
         nowrap
-        class="grow overflow-auto rounded-md border-2 border-gray-300 bg-amber-200 dark:border-gray-800 dark:bg-amber-800"
+        class="grow overflow-auto rounded-md border-2 border-gray-300 bg-amber-200 dark:border-gray-800 dark:bg-neutral-700"
       />
       <div class="flex flex-row gap-2">
         <button

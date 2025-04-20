@@ -23,7 +23,6 @@ export type ExecutionOutboundResult = {
 } & Omit<Awaited<ReturnType<typeof window.pardon.render>>, "secure">;
 
 export type ExecutionProgress =
-  | "history"
   | "preview"
   | "rendering"
   | "pending"
@@ -76,6 +75,7 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
         >;
         response: ReturnType<typeof window.pardon.continue>;
         send(): void;
+        render(): void;
       }
     >(source, (source, _previousSource, previous) => {
       const { http, values } = source;
@@ -86,9 +86,8 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
         response: deferred<boolean>(),
       };
 
-      const [progress, setProgress] = createSignal<ExecutionProgress>(
-        history ? "history" : "preview",
-      );
+      const [progress, setProgress] =
+        createSignal<ExecutionProgress>("preview");
 
       const abort = (reason: any) => {
         for (const gate of Object.values(gates)) {
@@ -184,9 +183,10 @@ export function executionMemo(source: Accessor<PardonExecutionSource>) {
           return previewTask;
         },
         get request() {
-          gates.render.resolution.resolve(true);
-
           return renderTask.then(({ render }) => render);
+        },
+        render() {
+          gates.render.resolution.resolve(true);
         },
         send() {
           gates.response.resolution.resolve(true);

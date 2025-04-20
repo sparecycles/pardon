@@ -90,7 +90,7 @@ export default function CodeMirror(props: CodeMirrorProps) {
   const [codemirrorProps, , restprops] = splitProps(
     props,
     ["value", "onModelViewUpdate", "onTransactionDispatched", "onValueChange"],
-    ["editorViewRef", "setup", "readonly", "overlay"],
+    ["editorViewRef", "setup", "readonly", "overlay", "disabled"],
   );
 
   const { editorView, ref, createExtension } =
@@ -134,7 +134,7 @@ export default function CodeMirror(props: CodeMirrorProps) {
   createExtension(() =>
     EditorView.theme({
       "": {
-        opacity: props.disabled ? "0.80 !important" : "1",
+        opacity: props.disabled ? "0.65 !important" : "1",
       },
     }),
   );
@@ -149,7 +149,7 @@ export default function CodeMirror(props: CodeMirrorProps) {
   );
 
   createExtension(() =>
-    props.readonly ? EditorState.readOnly.of(true) : undefined,
+    EditorState.readOnly.of(props.readonly || props.disabled),
   );
 
   createEffect(() => {

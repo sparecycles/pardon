@@ -42,7 +42,7 @@ export default function RequestHistory(props: {
   const historyLength = createMemo(() => tree().length);
 
   return (
-    <div class="flex size-full flex-col bg-slate-200 dark:bg-slate-800">
+    <div class="flex size-full flex-col bg-zinc-100 dark:bg-slate-800">
       <div class="fade-to-clear flex flex-1 flex-col overflow-auto">
         <ul class="flex flex-initial flex-col text-nowrap px-0 py-2 text-xs">
           <For each={tree().slice(0, cutoff)}>

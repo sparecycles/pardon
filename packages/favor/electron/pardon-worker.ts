@@ -270,7 +270,7 @@ function executeInit(
       select,
     })`${http.trim() || [input.method ?? "GET", "//"].join(" ").trim()}`.init();
   } catch (error) {
-    throw { step: "sync", info: { input, options }, error };
+    throw error.message; //{ step: "sync", info: { input, options }, error };
   }
 }
 

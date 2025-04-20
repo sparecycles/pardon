@@ -25,7 +25,7 @@ import CodeMirror, { type CodeMirrorProps } from "./codemirror/CodeMirror.tsx";
 
 type Values = Record<string, unknown>;
 
-export default function DataInput(
+export default function PardonInput(
   props: CodeMirrorProps & {
     value?: string;
     defaultValue?: string;
@@ -52,7 +52,7 @@ export default function DataInput(
   const [values, setValues] = createSignal(props.data.values());
 
   const formatted = createMemo(() =>
-    `${KV.stringify(values() ?? {}, "\n", 2, "\n\n")}${doc() ?? ""}`.trim(),
+    `${KV.stringify(values() ?? {}, "\n", 2, "\n")}${doc() ?? ""}`.trim(),
   );
 
   const [text, setText] = createSignal(props.value ?? formatted());
@@ -129,6 +129,10 @@ export default function DataInput(
       }
     }),
   );
+
+  createEffect(() => {
+    console.log("cm disabled", codemirrorProps.disabled);
+  });
 
   return (
     <CodeMirror
