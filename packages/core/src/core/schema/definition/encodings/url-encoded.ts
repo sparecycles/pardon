@@ -109,7 +109,7 @@ export function urlEncodedFormTemplate(
   multivalue: boolean = typeof template === "undefined" ||
     typeof template !== "object" ||
     Array.isArray(template),
-): Schematic<string> {
+): Template<string> {
   return encodingTemplate(
     formEncodingType,
     urlEncodedTemplate({

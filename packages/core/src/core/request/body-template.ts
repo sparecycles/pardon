@@ -42,6 +42,10 @@ export const encodings = {
     return jsonEncoding(value);
   },
   $form(value: string | Record<string, string> | [string, string][]) {
+    if (typeof value === "string") {
+      return muxTemplate(urlEncodedFormTemplate(value));
+    }
+
     return urlEncodedFormTemplate(value);
   },
   $base64(value: string | Template<string>) {
@@ -60,7 +64,7 @@ export const encodings = {
     }
     return jsonEncoding(template);
   },
-} satisfies Record<string, (...args: any) => Schematic<string>>;
+} satisfies Record<string, (...args: any) => Template<string>>;
 
 type InternalEncodingTypes = keyof typeof encodings;
 export type EncodingTypes = InternalEncodingTypes extends `$${infer Pretty}`
@@ -102,7 +106,7 @@ export function getContentEncoding(encoding: InternalEncodingTypes) {
   return encodings[encoding]!;
 }
 
-export function jsonEncoding(template?: Template<unknown>): Schematic<string> {
+export function jsonEncoding(template?: Template<unknown>): Template<string> {
   return encodingTemplate(jsonEncodingType, template);
 }
 
@@ -120,7 +124,7 @@ function $ref(ref: TemplateStringsArray | string) {
 
 export const jsonEncodingType: EncodingType<string, unknown> = {
   as: "string",
-  decode({ mode, template }) {
+  decode({ template }) {
     if ((template ?? "") == "") {
       return undefined;
     }
@@ -129,17 +133,13 @@ export const jsonEncodingType: EncodingType<string, unknown> = {
       throw new Error("json cannot parse non-string");
     }
 
-    if (mode === "match") {
-      return JSON.parse(template, (_, value, { source }) => {
-        if (typeof value === "number") {
-          return createNumber(source, value);
-        }
+    return JSON.parse(template, (_, value, { source }) => {
+      if (typeof value === "number") {
+        return createNumber(source, value);
+      }
 
-        return value;
-      });
-    }
-
-    return evalBodyTemplate(template);
+      return value;
+    });
   },
   encode(output, context) {
     if (output === undefined) {

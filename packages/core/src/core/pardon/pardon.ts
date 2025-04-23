@@ -463,13 +463,14 @@ export const PardonFetchExecution = pardonExecution({
 
     for (const { steps, configuration } of layers) {
       for (const responseTemplate of steps) {
-        const { status, headers, body, outcome } =
+        const { status, headers, body, outcome, meta } =
           responseTemplate as HttpsResponseStep;
 
         const result = matcher.extend(
           {
             status,
             headers,
+            meta,
             ...(body && { body }),
           },
           { mode: configuration.mode, environment: new ScriptEnvironment() },

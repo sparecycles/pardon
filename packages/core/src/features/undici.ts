@@ -91,8 +91,6 @@ async function fetchSNI(
     body,
   } as Parameters<typeof request>[1] & { servername: string });
 
-  console.log(`${method} ${requestUrl} : ${response.statusCode}`);
-
   return {
     status: response.statusCode,
     headers: new Headers(

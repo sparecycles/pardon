@@ -95,13 +95,13 @@ export function createPostrenderContext<T>(
   return ctx;
 }
 
-export type SchemaMergeType = {
+export type ContextMeta = {
   mode: SchemaMergingContext<unknown>["mode"];
   phase: SchemaMergingContext<unknown>["phase"];
 };
 
 export function createMergingContext<T>(
-  { mode, phase }: SchemaMergeType,
+  { mode, phase, ...meta }: ContextMeta,
   schema: Schema<T>,
   template: Template<NoInfer<T>> | undefined,
   environment: SchemaScriptEnvironment = new ScriptEnvironment(),
@@ -109,6 +109,7 @@ export function createMergingContext<T>(
   const context = {
     mode,
     phase,
+    meta: meta,
     keys: [],
     evaluationScopePath: [],
     environment,

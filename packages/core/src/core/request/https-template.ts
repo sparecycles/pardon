@@ -102,9 +102,11 @@ export function bodySchema(
       }
     },
     async render(context) {
-      return schema
-        ? await executeOp(schema ?? stubSchema(), "render", context)
+      const result = schema
+        ? await executeOp(schema, "render", context)
         : undefined;
+
+      return result;
     },
     merge(context) {
       const { template } = context;
@@ -124,22 +126,50 @@ export function bodySchema(
         return bodySchema(encoding, merge(schema, { ...context }));
       }
 
+      // FIXME: this is a bit convoluted
+
+      const selfEncoding = (context.meta?.body as any) ?? encoding;
+
       const thisEncoding =
         context.mode === "match"
-          ? (encoding ?? guessContentType(template))
-          : encoding === "json"
+          ? (selfEncoding ?? guessContentType(template))
+          : selfEncoding === "json"
             ? "template"
-            : (encoding ?? "template");
+            : (selfEncoding ?? "template");
 
       const thisTemplate =
         thisEncoding === "json" ? JSON.parse(template) : template;
 
-      const merged = merge(schema ?? stubSchema(), {
-        ...context,
-        template: encodings[`$${thisEncoding}`](thisTemplate),
-      });
+      try {
+        const merged = merge(schema ?? stubSchema(), {
+          ...context,
+          template: encodings[`$${thisEncoding}`](thisTemplate),
+        });
+        return merged && bodySchema(selfEncoding, merged);
+      } catch (error) {
+        // on error, try using any exisitng schema
+        if (schema) {
+          const merged = merge(schema, context);
+          if (merged) {
+            return merged && bodySchema(selfEncoding, merged);
+          }
+        }
 
-      return merged && bodySchema(encoding, merged);
+        if (
+          thisEncoding !== "template" ||
+          !selfEncoding ||
+          context.mode === "match"
+        ) {
+          throw error;
+        }
+
+        const merged = merge(schema ?? stubSchema(), {
+          ...context,
+          template: encodings[`$${selfEncoding}`](template),
+        });
+
+        return merged && bodySchema(selfEncoding, merged);
+      }
     },
   });
 }

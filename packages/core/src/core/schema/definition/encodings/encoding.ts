@@ -21,11 +21,12 @@ import {
 } from "../../core/types.js";
 import {
   defineSchema,
-  defineSchematic,
   executeOp,
   exposeSchematic,
+  isSchematic,
   merge,
 } from "../../core/schema-ops.js";
+import { templateSchematic } from "../../template.js";
 
 export type EncodingType<T, S> = {
   as: T extends string ? "string" : Exclude<string, "string">;
@@ -37,10 +38,8 @@ function decode<T, S>(
   context: SchemaMergingContext<T>,
   encoding: EncodingType<T, S>,
 ): SchemaMergingContext<S> | undefined {
-  if (typeof context.template === "function") {
-    const ops = exposeSchematic<EncodingSchematicOps<T, S>>(
-      context.template as Schematic<T>,
-    );
+  if (isSchematic(context.template)) {
+    const ops = exposeSchematic<EncodingSchematicOps<T, S>>(context.template);
 
     if (!ops.encoding) {
       throw diagnostic(
@@ -69,17 +68,17 @@ export function encodingTemplate<T, S>(
   encoding: EncodingType<T, S>,
   template?: Template<S>,
 ): Schematic<T> {
-  return defineSchematic<EncodingSchematicOps<T, S>>({
-    expand(context) {
-      return encodingSchema(encoding, context.expand(template));
+  return templateSchematic(
+    (context) => encodingSchema(encoding, context.expand(template)),
+    {
+      encoding() {
+        return encoding;
+      },
+      template() {
+        return template;
+      },
     },
-    encoding() {
-      return encoding;
-    },
-    template() {
-      return template;
-    },
-  });
+  );
 }
 
 export function encodingSchema<T, S>(
@@ -94,7 +93,8 @@ export function encodingSchema<T, S>(
 
         return result && encodingSchema(encoding, result);
       } catch (error) {
-        throw diagnostic(context, error);
+        diagnostic(context, error);
+        return undefined;
       }
     },
 
