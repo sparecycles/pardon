@@ -18,14 +18,14 @@ export type SimpleRequestInit = Omit<RequestInit, "body"> & {
   encoding?: EncodingTypes;
 };
 
-type RequestMeta = Record<string, string> & {
+export type RequestMeta = Record<string, string> & {
   resolve?: string;
   searchParams?: "multi" | (string & {});
-  encoding?: EncodingTypes;
+  body?: EncodingTypes;
 };
 
-type ResponseMeta = Record<string, string> & {
-  encoding?: EncodingTypes;
+export type ResponseMeta = Record<string, string> & {
+  body?: EncodingTypes;
 };
 
 export type FetchObject = {

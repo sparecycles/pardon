@@ -520,7 +520,7 @@ ${request.reason}
         if (previewResource.loading) {
           return wasDisabled;
         }
-        return previewResource.latest.status !== "fulfilled";
+        return untrack(() => previewResource.latest).status !== "fulfilled";
       case "rendering":
         return wasDisabled;
       case "errored":
@@ -917,10 +917,12 @@ ${request.reason}
                                     return previousRequestInfo ?? {};
                                   }
                                 } else if (
+                                  requestResource.state === "ready" &&
                                   requestResource.latest?.status === "fulfilled"
                                 ) {
                                   http = requestResource.latest.value.http;
                                 } else if (
+                                  previewResource.state === "ready" &&
                                   previewResource.latest?.status === "fulfilled"
                                 ) {
                                   http = previewResource.latest.value.http;

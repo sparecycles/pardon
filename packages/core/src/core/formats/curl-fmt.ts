@@ -10,7 +10,7 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 import { extractKVs, intoArgs } from "../../util/kv-options.js";
-import { FetchObject } from "../request/fetch-pattern.js";
+import { FetchObject, RequestMeta } from "../request/fetch-pattern.js";
 import { parseArgs } from "node:util";
 import { intoSearchParams } from "../request/search-pattern.js";
 import { arrayIntoObject } from "../../util/mapping.js";
@@ -166,7 +166,7 @@ function parse(command: string): {
 
   const bodyAndEncoding: {
     body?: string;
-    encoding?: Exclude<FetchObject["meta"], undefined>["encoding"];
+    encoding?: RequestMeta["body"];
   } =
     opts.data !== undefined
       ? { body: opts.data }

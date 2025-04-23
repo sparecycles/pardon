@@ -10,17 +10,12 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 import MIME from "whatwg-mimetype";
-import { jsonEncoding } from "../schema/definition/encodings/json-encoding.js";
 import { referenceTemplate } from "../schema/definition/structures/reference.js";
 import { FetchObject, ResponseObject } from "./fetch-pattern.js";
-import {
-  urlEncodedTemplate,
-  urlEncodedFormTemplate,
-} from "../schema/definition/encodings/url-encoded.js";
+import { urlEncodedTemplate } from "../schema/definition/encodings/url-encoded.js";
 import { headersTemplate } from "../schema/definition/encodings/headers-encoding.js";
 import { datums } from "../schema/definition/datum.js";
 import { scopedFields } from "../schema/scheming.js";
-import { textTemplate } from "../schema/definition/encodings/text-encoding.js";
 import { hiddenTemplate } from "../schema/definition/structures/hidden.js";
 import { diagnostic } from "../schema/core/context-util.js";
 import { stubSchema } from "../schema/definition/structures/stub.js";
@@ -36,50 +31,47 @@ import {
   executeOp,
   merge,
 } from "../schema/core/schema-ops.js";
-import { EncodingTypes, evalBodyTemplate } from "./body-template.js";
+import { encodings, EncodingTypes } from "./body-template.js";
 import { JSON } from "../json.js";
 import { mixing } from "../schema/core/contexts.js";
 
-function looksLikeJson(template: unknown): template is string {
-  if (typeof template !== "string") {
+function isJson(body: string) {
+  try {
+    JSON.parse(body);
+    return true;
+  } catch (ignore) {
+    void ignore;
     return false;
   }
-
-  // https://github.com/microsoft/TypeScript/issues/27706 !!!
-  // template = template.trim()
-  const trimmed = template.trim();
-  if (trimmed === "null" || /[{["1-9]/.test(trimmed)) {
-    try {
-      JSON.parse(template);
-      return true;
-    } catch (error) {
-      // oops.
-      void error;
-    }
-  }
-
-  return false;
 }
 
 export function guessContentType(
-  headers: Headers,
   body: string,
+  headers?: Headers,
 ): EncodingTypes | undefined {
+  if (!headers) {
+    if (isJson(body)) {
+      return "json";
+    }
+
+    return "raw";
+  }
+
   const contentType = MIME.parse(headers.get("Content-Type")!);
 
   switch (contentType?.essence) {
     case "application/json":
-      return looksLikeJson(body) ? "json" : "raw";
+      return isJson(body) ? "json" : "raw";
     case "application/x-www-form-urlencoded":
       return "form";
     case "text/plain":
       return "text";
     default:
       if (contentType?.essence.endsWith("+json")) {
-        return looksLikeJson(body) ? "json" : "raw";
+        return isJson(body) ? "json" : "raw";
       }
 
-      return "text";
+      return "raw";
   }
 }
 
@@ -115,88 +107,39 @@ export function bodySchema(
         : undefined;
     },
     merge(context) {
-      const { template: source } = context;
+      const { template } = context;
 
-      if (source === undefined || source === "") {
+      if (template === undefined || template === "") {
         return bodySchema(encoding, schema);
       }
 
-      if (typeof source === "function") {
+      if (typeof template !== "string") {
         throw diagnostic(
           context,
-          `body schema only works with strings not (${Object.keys(source()).join("/")})`,
+          `body schema only works with strings not (${typeof template})`,
         );
       }
 
-      if (typeof source !== "string") {
-        throw diagnostic(
-          context,
-          `body schema only works with strings not (${typeof source})`,
-        );
+      if (context.mode === "match" && schema) {
+        return bodySchema(encoding, merge(schema, { ...context }));
       }
 
-      if (context.mode === "match") {
-        if (schema) {
-          return bodySchema(encoding, merge(schema, { ...context }));
-        }
+      const thisEncoding =
+        context.mode === "match"
+          ? (encoding ?? guessContentType(template))
+          : encoding === "json"
+            ? "template"
+            : (encoding ?? "template");
 
-        const merged = merge(stubSchema(), {
-          ...context,
-          template:
-            encoding === "json"
-              ? jsonEncoding(JSON.parse(source))
-              : encoding === "form"
-                ? urlEncodedFormTemplate(source)
-                : textTemplate(source),
-        }) as Schema<string>;
-
-        return merged && bodySchema(encoding ?? "json", merged);
-      }
-
-      try {
-        if (
-          /^[$]?[a-z]+(?<!^[$]?(?:mix|mux|match))\s*[(]/i.test(source.trim())
-        ) {
-          const merged = merge(stubSchema(), {
-            ...context,
-            template: evalBodyTemplate(`${source}`),
-          }) as Schema<string>;
-
-          return merged && bodySchema(encoding, merged);
-        }
-      } catch (error) {
-        //... oops?
-        console.warn(error);
-        void error;
-      }
-
-      try {
-        if (
-          /^([0-9]|[[{"'+-]|null|(?:mix|mix|match)[(])/i.test(source.trim())
-        ) {
-          const merged = merge(schema ?? stubSchema(), {
-            ...context,
-            template: evalBodyTemplate(`${encoding ?? "json"}(${source})`),
-          }) as Schema<string>;
-
-          return merged && bodySchema(encoding, merged);
-        }
-      } catch (error) {
-        //... oops?
-        console.warn(error);
-        void error;
-      }
-
-      const effectiveEncoding = encoding ?? "json";
+      const thisTemplate =
+        thisEncoding === "json" ? JSON.parse(template) : template;
 
       const merged = merge(schema ?? stubSchema(), {
         ...context,
-        template: evalBodyTemplate(
-          `${effectiveEncoding}(${effectiveEncoding === "json" ? source : JSON.stringify(source)})`,
-        ) as Template<string>,
+        template: encodings[`$${thisEncoding}`](thisTemplate),
       });
 
-      return merged && bodySchema(effectiveEncoding, merged);
+      return merged && bodySchema(encoding, merged);
     },
   });
 }

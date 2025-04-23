@@ -81,17 +81,17 @@ async function fetchSNI(
     rheaders.append("host", servername!);
   }
 
+  method ??= "GET";
   // note: returns undici response, not fetch response.
   const response = await request(requestUrl, {
     hostname: url.hostname,
     servername: hostip ? servername : undefined,
-
-    method:
-      (method as Exclude<Parameters<typeof request>[1], undefined>["method"]) ??
-      "GET",
+    method,
     headers: rheaders,
     body,
   } as Parameters<typeof request>[1] & { servername: string });
+
+  console.log(`${method} ${requestUrl} : ${response.statusCode}`);
 
   return {
     status: response.statusCode,

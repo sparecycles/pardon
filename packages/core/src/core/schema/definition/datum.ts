@@ -101,29 +101,25 @@ function mergeRepresentation<T extends Scalar>(
   if (template !== undefined) {
     const source = String(template);
 
-    const pattern = literal
-      ? patternLiteral(source)
-      : patternize(source, custom ?? defaultScalarBuilding);
+    const templatePattern =
+      context.mode === "match" || literal
+        ? patternLiteral(source)
+        : patternize(source, custom ?? defaultScalarBuilding);
 
     if (
       context.mode === "meld" &&
       patterns.length &&
-      !isPatternTrivial(pattern) &&
-      !pattern.vars.some((param) => isMelding(param))
+      !isPatternTrivial(templatePattern) &&
+      !templatePattern.vars.some((param) => isMelding(param))
     ) {
       if (
         !patterns?.some((existing) =>
-          arePatternsMeldable(context, existing, pattern),
+          arePatternsMeldable(context, existing, templatePattern),
         )
       ) {
         return;
       }
     }
-
-    const templatePattern =
-      context.mode === "match"
-        ? patternLiteral(String(template))
-        : patternize(String(template), custom);
 
     if (context.evaluationScope.path.length) {
       if (
@@ -141,7 +137,7 @@ function mergeRepresentation<T extends Scalar>(
       }
     } else {
       const match = context.environment.match(
-        context.mode === "match"
+        context.mode === "match" || literal
           ? patternLiteral(String(template))
           : patternize(String(template), custom),
         patterns,
@@ -332,7 +328,7 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
       let appraised = resolved[0] ?? tryResolve(context, patterns);
 
       if (
-        context.mode === "match" &&
+        (context.mode === "match" || info?.literal) &&
         appraised !== undefined &&
         info?.template === undefined
       ) {
@@ -353,7 +349,10 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
         appraised = convertScalar(appraised, type, { unboxed }) as T;
       }
 
-      if (appraised === undefined && context.mode === "match") {
+      if (
+        appraised === undefined &&
+        (context.mode === "match" || info?.literal)
+      ) {
         if (
           patterns.some(
             (pattern) =>
@@ -816,7 +815,7 @@ function extractDatumInfo<T>(
     ? undefined
     : {
         template: template as T,
-        literal: context.mode === "match",
+        literal: context.mode === "match" ? true : undefined,
         type: scalarFuzzyTypeOf(context, template as T),
       };
 }

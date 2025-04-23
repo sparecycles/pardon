@@ -225,7 +225,7 @@ export const PardonFetchExecution = pardonExecution({
         },
       };
 
-      const archetype = httpsRequestSchema(request.meta?.encoding, {
+      const archetype = httpsRequestSchema(request.meta?.body, {
         search: { multivalue: request?.meta?.searchParams == "multi" },
       });
 
@@ -440,9 +440,13 @@ export const PardonFetchExecution = pardonExecution({
   async process({ context, outbound, inbound, match }) {
     const { compiler } = context.app();
     const { layers, endpoint } = match;
+
     const now = Date.now();
+
     const encoding =
-      guessContentType(inbound.headers, inbound.body ?? "") ?? "raw";
+      inbound.meta?.body ??
+      guessContentType(inbound.body ?? "", inbound.headers) ??
+      "raw";
 
     let matchedSchema: Schema<ResponseObject> | undefined;
     let matchedOutcome: string | undefined;

@@ -37,7 +37,7 @@ import {
 } from "../schema/scheming.js";
 import { evalTemplate } from "./eval-template.js";
 
-const encodings = {
+export const encodings = {
   $json(value: unknown | Template<unknown>) {
     return jsonEncoding(value);
   },
@@ -52,6 +52,13 @@ const encodings = {
   },
   $raw(value: string) {
     return textTemplate(datums.antipattern<string>(value));
+  },
+  $template(value: string) {
+    const template = evalBodyTemplate(value);
+    if (typeof template === "function") {
+      return template as Schematic<string>;
+    }
+    return jsonEncoding(template);
   },
 } satisfies Record<string, (...args: any) => Schematic<string>>;
 
