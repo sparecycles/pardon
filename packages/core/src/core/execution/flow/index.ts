@@ -18,7 +18,6 @@ import {
   currentFlowContext,
   FlowResult,
   runFlow,
-  IdempotentFlowSource,
   FlowFunction,
   FlowParams,
 } from "./flow-core.js";
@@ -36,7 +35,6 @@ export type {
   FlowResult,
   FlowFunction,
   FlowParams,
-  IdempotentFlowSource,
 };
 
 export async function flow(

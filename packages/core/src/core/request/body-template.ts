@@ -124,7 +124,7 @@ function $ref(ref: TemplateStringsArray | string) {
 
 export const jsonEncodingType: EncodingType<string, unknown> = {
   as: "string",
-  decode({ template }) {
+  decode({ template, mode }) {
     if ((template ?? "") == "") {
       return undefined;
     }
@@ -133,13 +133,22 @@ export const jsonEncodingType: EncodingType<string, unknown> = {
       throw new Error("json cannot parse non-string");
     }
 
-    return JSON.parse(template, (_, value, { source }) => {
-      if (typeof value === "number") {
-        return createNumber(source, value);
-      }
+    try {
+      return JSON.parse(template, (_, value, { source }) => {
+        if (typeof value === "number") {
+          return createNumber(source, value);
+        }
 
-      return value;
-    });
+        return value;
+      });
+    } catch (error) {
+      if (mode !== "match") {
+        // fallback to script evaluation (in non-match contexts)
+        // if body doesn't parse
+        void error;
+        return evalBodyTemplate(template);
+      }
+    }
   },
   encode(output, context) {
     if (output === undefined) {

@@ -17,7 +17,6 @@ export {
   type FlowContext,
   type FlowResult,
   type FlowName,
-  type IdempotentFlowSource,
   type FlowFunction,
   type FlowParams,
   type FlowParamsDict,

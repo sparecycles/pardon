@@ -68,7 +68,6 @@ export type HttpsFlowConfig = {
   import?: HttpsTemplateConfiguration["import"];
   defaults?: HttpsTemplateConfiguration["defaults"];
   attempts?: number;
-  idempotent?: boolean;
 };
 
 export type UseFlow = {
