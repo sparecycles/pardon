@@ -131,9 +131,7 @@ export default function RecallSystem(props: {
                 return (
                   <>
                     <RequestSummaryNode
-                      expandedSet={new Set()}
-                      current={props.isCurrent(trace)}
-                      path={[]}
+                      relation={props.isCurrent(trace) ? "current" : undefined}
                       trace={{
                         trace,
                         tlr: true,
@@ -141,18 +139,9 @@ export default function RecallSystem(props: {
                           trace,
                           context: {
                             ask,
-                            endpoint: {
-                              action: "",
-                              configuration: {
-                                name: "",
-                                path: "",
-                                config: [],
-                              },
-                              layers: [],
-                              service: "",
-                            },
+                            endpoint: "::recalled",
                           },
-                          awaited: { requests: [], results: [] },
+                          awaited: { requests: [] },
                         },
                         render: {
                           trace,
@@ -170,6 +159,7 @@ export default function RecallSystem(props: {
                             response,
                             values: inbound,
                             outcome: undefined,
+                            flow: {},
                           },
                         },
                       }}
@@ -179,20 +169,19 @@ export default function RecallSystem(props: {
                           {formatTimestamp(created_at)}
                         </span>
                       }
-                      fallback={
-                        <div class="pl-2">
-                          <KeyValueCopier
-                            readonly
-                            initialData={sortedValues
-                              .slice(0, 3)
-                              .flatMap(([, keyvalue]) =>
-                                Object.entries(keyvalue),
-                              )}
-                          />
-                          <Show when={sortedValues.length > 3}>...</Show>
-                        </div>
-                      }
-                    ></RequestSummaryNode>
+                    >
+                      <div class="pl-3">
+                        <KeyValueCopier
+                          readonly
+                          initialData={sortedValues
+                            .slice(0, 3)
+                            .flatMap(([, keyvalue]) =>
+                              Object.entries(keyvalue),
+                            )}
+                        />
+                        <Show when={sortedValues.length > 3}>...</Show>
+                      </div>
+                    </RequestSummaryNode>
                   </>
                 );
               }}

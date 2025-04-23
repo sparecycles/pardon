@@ -11,25 +11,30 @@ governing permissions and limitations under the License.
 */
 
 import { makePersisted } from "@solid-primitives/storage";
-import { createEffect, createMemo, createRoot, createSignal } from "solid-js";
-import { HistoryTree } from "./RequestSummaryTree.tsx";
+import {
+  Accessor,
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  on,
+} from "solid-js";
 import { persistJson } from "../util/persistence.ts";
 import localforage from "localforage";
 import { setSecureData } from "./secure-data.ts";
 
-type TracingHookPayloads = any;
 export type Trace = {
   trace: number;
   tlr?: boolean; // top-level-request
-  sent?: true;
+  sent?: number;
   cancelled?: true;
-  start: TracingHookPayloads["onRenderStart"]["trace"];
-  render?: TracingHookPayloads["onRenderComplete"]["trace"];
-  error?: TracingHookPayloads["onError"]["trace"];
-  result?: TracingHookPayloads["onResult"]["trace"];
+  start: TracingHookPayloads["onRenderStart"];
+  render?: TracingHookPayloads["onRenderComplete"];
+  error?: TracingHookPayloads["onError"];
+  result?: TracingHookPayloads["onResult"];
 };
 
-const [history, setHistory, initHistory] = makePersisted(
+const [, setHistory, initHistory] = makePersisted(
   createSignal<{
     traces: Record<number, Trace>;
   }>({ traces: {} }),
@@ -89,7 +94,7 @@ createRoot(() => {
       onSend(trace) {
         setTraces((traces) => ({
           ...traces,
-          [trace]: { ...traces[trace], sent: true },
+          [trace]: { ...traces[trace], sent: Date.now() },
         }));
       },
       onResult(trace, { secure, ...result }) {
@@ -152,8 +157,6 @@ createRoot(() => {
   });
 });
 
-setTimeout(() => console.log("history size", history().traces), 1000);
-
 export function clearAllTraces() {
   setTraces({});
 
@@ -190,61 +193,57 @@ export function cancelTrace(trace: number) {
   });
 }
 
-export function requestHistoryForest() {
-  const allTraces = traces();
-  const list = Object.values(allTraces)
-    .filter(
-      ({ start, render, sent, tlr, cancelled }) =>
-        !cancelled && (tlr || start || render) && sent,
-    )
-    .map(({ trace }) => Number(trace))
-    .sort((a, b) => b - a);
-
-  const toplevel = list.filter((id) => {
-    const { tlr, cancelled } = allTraces[id] ?? {};
-
-    return tlr && !cancelled;
-  });
-
-  const seen = new Set<number>();
-
-  function visit(
-    trace: number,
-    perRequest: Set<number> = new Set(),
-  ): HistoryTree {
-    if (perRequest.has(trace)) {
-      return;
-    }
-
-    perRequest.add(trace);
-    seen.add(trace);
-
-    return {
-      trace,
-      deps: [...(allTraces[trace]?.render?.awaited.results || [])]
-        .reverse()
-        .filter((trace) => traces()[trace])
-        .map((trace) => visit(trace, perRequest))
-        .filter(Boolean),
-    };
-  }
-
-  const known = toplevel.map((trace) => visit(trace)).filter(Boolean);
-
-  const sharedPerRequest = new Set<number>();
-  const unknown = list
-    .map(
-      (trace) =>
-        !seen.has(trace) &&
-        !sharedPerRequest.has(trace) &&
-        visit(trace, sharedPerRequest),
-    )
-    .filter(Boolean)
-    .map<HistoryTree>((info) => ({ ...info, auto: true }));
-
-  return [...known, ...unknown].sort(({ trace: a }, { trace: b }) => b - a);
+export function requestHistory() {
+  return createMemo(() =>
+    Object.values(traces())
+      .filter(
+        ({ start, render, sent, tlr, cancelled }) =>
+          !cancelled && (tlr || start || render) && sent,
+      )
+      .sort(({ sent: a }, { sent: b }) => b - a)
+      .map(({ trace }) => Number(trace)),
+  );
 }
 
-export function requestHistory() {
-  return createMemo(requestHistoryForest);
+export type RelatedTraces = {
+  current: number;
+  direct: number[];
+  indirect: number[];
+};
+
+export function relatedTraces(
+  currentTrace: Accessor<number>,
+): Accessor<RelatedTraces> {
+  return createMemo(
+    on([traces, currentTrace], ([traces, current]) => {
+      const direct = (traces[current]?.render?.awaited.results ?? []).filter(
+        (dep, _, results) =>
+          !results.some((t) =>
+            traces[t]?.render?.awaited.results.includes(dep),
+          ),
+      );
+      const indirect = [];
+      const seen = new Set();
+
+      visit(current);
+
+      function visit(dep: number) {
+        if (seen.has(dep)) {
+          return;
+        }
+
+        seen.add(dep);
+
+        if (dep !== current && !direct.includes(dep)) {
+          indirect.push(dep);
+        }
+
+        for (const trace of traces[dep]?.render?.awaited.results ?? []) {
+          visit(trace);
+        }
+      }
+
+      return { current, direct, indirect };
+    }),
+  );
 }

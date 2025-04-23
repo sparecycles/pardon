@@ -15,6 +15,7 @@ import { RequestSummaryTree } from "./RequestSummaryTree.tsx";
 import {
   clearAllTraces,
   clearTrace,
+  relatedTraces,
   requestHistory,
   Trace,
   traces,
@@ -27,9 +28,10 @@ export const RequestSummaryInfo = createContext<{
 
 export default function RequestHistory(props: {
   onRestore(history: ExecutionHistory): void;
-  isCurrent(trace: number): boolean;
+  currentTrace: number;
 }) {
   const tree = requestHistory();
+  const related = relatedTraces(createMemo(() => props.currentTrace));
 
   const expandedSet = new Set<string>();
 
@@ -43,14 +45,14 @@ export default function RequestHistory(props: {
 
   return (
     <div class="flex size-full flex-col bg-zinc-100 dark:bg-slate-800">
-      <div class="fade-to-clear flex flex-1 flex-col overflow-auto">
+      <div class="fade-to-clear flex flex-1 flex-col overflow-auto [--clear-start-opacity:0]">
         <ul class="flex flex-initial flex-col text-nowrap px-0 py-2 text-xs">
           <For each={tree().slice(0, cutoff)}>
-            {(node) => (
+            {(trace) => (
               <RequestSummaryTree
                 traces={traces()}
-                isCurrent={props.isCurrent}
-                node={node}
+                related={related()}
+                trace={trace}
                 onRestore={props.onRestore}
                 expandedSet={expandedSet}
                 clearTrace={clearTrace}

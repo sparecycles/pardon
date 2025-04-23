@@ -22,33 +22,61 @@ import {
   createEffect,
   on,
   Show,
+  Setter,
+  createMemo,
 } from "solid-js";
 import { twMerge } from "tailwind-merge";
+import CodeMirror, { EditorView } from "./codemirror/CodeMirror.tsx";
+import { cursorDocEnd } from "@codemirror/commands";
+import { arrayIntoObject } from "pardon/utils";
 
 export type KvEntry = readonly [string, unknown, string?];
 
-type KvCopierControl = {
+export type KvCopierControl = {
   data: Accessor<KvEntry[]>;
+  setData: Setter<KvEntry[]>;
   addValues(kv: Record<string, unknown>): void;
+  getValues(): Record<string, unknown>;
   containsDatum(transfer: DataTransfer): boolean;
+  drag(transfer: DataTransfer): boolean;
   drop(transfer: DataTransfer): true | void;
   deleteDatum(transfer: DataTransfer): void;
   deleteAll(): void;
+  flushEditor?(): void;
 };
 
 type KeyValueCopierContext = ReturnType<typeof makeKeyValueCopierContext>;
 
-export function makeKeyValueCopierContext(initialData?: KvEntry[]) {
+export function makeKeyValueCopierContext({
+  initial = [],
+  dedup = false,
+}: { initial?: KvEntry[]; dedup?: boolean } = {}) {
   const source = crypto.randomUUID();
-  const [data, setData] = createSignal<KvEntry[]>(initialData ?? []);
+  const [data, setData] = createSignal<KvEntry[]>(initial);
 
   function addValues(kv: Record<string, unknown>) {
-    setData((data) => [
-      ...data,
-      ...Object.entries(kv ?? {}).map(
-        ([k, v]) => [k, v, crypto.randomUUID()] as KvEntry,
-      ),
-    ]);
+    setData((data) => {
+      const updated = new Set<string>();
+
+      data = data.map((entry) => {
+        if (!dedup) {
+          return entry;
+        }
+        const value = kv[entry[0]];
+        if (value !== undefined) {
+          updated.add(entry[0]);
+          return [entry[0], value, entry[2]] as KvEntry;
+        }
+        return entry;
+      });
+
+      return [
+        ...data,
+        ...Object.entries(kv ?? {})
+          .filter(([k]) => !updated.has(k))
+          .map(([k, v]) => [k, v, crypto.randomUUID()] as KvEntry),
+      ];
+    });
   }
 
   function containsDatum(transfer: DataTransfer) {
@@ -62,7 +90,11 @@ export function makeKeyValueCopierContext(initialData?: KvEntry[]) {
 
   const controls: KvCopierControl = {
     data,
+    setData,
     addValues,
+    getValues: createMemo(() =>
+      arrayIntoObject(data(), ([k, v]) => ({ [k]: v })),
+    ),
     deleteDatum(transfer: DataTransfer) {
       const info = parseId(transfer);
       if (info?.source !== source) {
@@ -74,6 +106,11 @@ export function makeKeyValueCopierContext(initialData?: KvEntry[]) {
     containsDatum,
     deleteAll() {
       setData([]);
+    },
+    drag(dataTransfer) {
+      return dataTransfer.types.some((type) =>
+        ["text/value", "text/plain"].includes(type),
+      );
     },
     drop(dataTransfer) {
       const kvData = dataTransfer.getData("text/value");
@@ -125,22 +162,33 @@ export default function KeyValueCopier(
     initialData?: KvEntry[];
     readonly?: boolean;
     noIcon?: boolean;
+    editor?: boolean;
     values?: Record<string, unknown>;
+    target?: boolean;
+    dedup?: boolean;
+    trash?: boolean;
     init?(
       copier: KvCopierControl,
     ): Omit<Partial<ComponentProps<"div">>, "children">;
-    children?(copier: KvCopierControl): JSX.Element;
+    controls?(controls: KvCopierControl): void;
+    children?: JSX.Element | { (copier: KvCopierControl): JSX.Element };
   },
 ) {
   const [, restProps] = splitProps(props, [
     "initialData",
     "readonly",
     "values",
+    "controls",
   ]);
 
-  const context = makeKeyValueCopierContext(untrack(() => props.initialData));
+  const context = makeKeyValueCopierContext({
+    initial: props.initialData,
+    dedup: props.dedup,
+  });
 
-  const { setData, addValues } = context;
+  const { setData, addValues, controls } = context;
+
+  props.controls?.(controls);
 
   if (props.readonly) {
     createEffect(
@@ -154,7 +202,10 @@ export default function KeyValueCopier(
         },
       ),
     );
+  } else {
+    addValues(props.values ?? {});
   }
+
   return <KeyValueCopierWidget {...restProps} context={context} />;
 }
 
@@ -162,21 +213,47 @@ export function KeyValueCopierWidget(
   props: Omit<ComponentProps<"div">, "children"> & {
     context: KeyValueCopierContext;
     noIcon?: boolean;
-    children?(copier: KvCopierControl): JSX.Element;
+    editor?: boolean;
+    target?: boolean;
+    dedup?: boolean;
+    trash?: boolean;
+    children?: JSX.Element | { (copier: KvCopierControl): JSX.Element };
   },
 ) {
   const [, divProps] = splitProps(props, ["context", "children"]);
 
   const { source, data, controls } = untrack(() => props.context);
 
+  createEffect(
+    on(
+      () => props.editor,
+      (editor) => {
+        if (!editor) {
+          delete controls.flushEditor;
+        }
+      },
+    ),
+  );
+
+  const { setData, addValues, deleteDatum, deleteAll } = controls;
+
   return (
     <div
       {...divProps}
       class={twMerge(
-        "relative flex flex-1 overflow-hidden [&:has(.copyable-object>.key:hover,.copyable-value:hover,.variable>.key:hover)>.copy-icon]:opacity-50",
+        "relative flex flex-1 flex-col overflow-hidden [&:has(.copyable-object>.key:hover,.copyable-value:hover,.variable>.key:hover)>.copy-icon]:opacity-50",
         props.class,
       )}
       classList={props.classList}
+      onDragOver={(event) => {
+        if (controls.drag(event.dataTransfer)) {
+          event.preventDefault();
+        }
+      }}
+      onDrop={(event) => {
+        controls.drop(event.dataTransfer);
+        event.preventDefault();
+      }}
     >
       <div class="flex flex-1 flex-col overflow-auto whitespace-pre">
         <For each={data()}>
@@ -189,7 +266,139 @@ export function KeyValueCopierWidget(
             </div>
           )}
         </For>
+        <Show when={props.editor}>
+          {createMemo(() => {
+            const [newData, setNewData] = createSignal("");
+
+            const [editorView, setEditorView] = createSignal<EditorView>();
+
+            function flushEditor() {
+              const {
+                [KV.eoi]: _eoi,
+                [KV.unparsed]: remainder,
+                [KV.upto]: _upto,
+                ...data
+              } = KV.parse(newData(), "stream");
+
+              addValues(data);
+
+              setNewData(remainder?.trimEnd() ?? "");
+            }
+
+            controls.flushEditor = flushEditor;
+
+            return (
+              <CodeMirror
+                class="min-h-8 rounded-md bg-neutral-300/70 dark:bg-neutral-700/70"
+                editorViewRef={setEditorView}
+                onKeyDown={(event) => {
+                  if (event.key === "Backspace" && !newData().trim()) {
+                    let lastEntry: KvEntry;
+                    setData((data) => {
+                      lastEntry = data.slice(-1)[0];
+                      return data.slice(0, -1);
+                    });
+
+                    setNewData(
+                      KV.stringify({
+                        [lastEntry[0]]: lastEntry[1],
+                      }),
+                    );
+
+                    cursorDocEnd(editorView());
+                    event.preventDefault();
+
+                    return;
+                  }
+
+                  if (event.key !== "Enter") {
+                    return;
+                  }
+                  try {
+                    flushEditor();
+                    event.preventDefault();
+                  } catch (ex) {
+                    console.warn("error parsing kv scratch data", ex);
+                    void ex;
+                  }
+                }}
+                readwrite
+                value={newData()}
+                onValueChange={setNewData}
+                onDragOver={(event) => {
+                  if (newData().trim()) {
+                    event.stopImmediatePropagation();
+                    return;
+                  }
+
+                  if (event.dataTransfer.types.includes("text/value")) {
+                    event.preventDefault();
+                    event.target.classList.add("drop");
+                  }
+                }}
+                onDrop={(event) => {
+                  deleteDatum(event.dataTransfer);
+
+                  setNewData((newData) =>
+                    [
+                      newData,
+                      event.dataTransfer.getData("text/value") ??
+                        event.dataTransfer.getData("text/plain") ??
+                        "",
+                    ]
+                      .map((s) => s?.trim())
+                      .filter(Boolean)
+                      .join(" "),
+                  );
+                  event.stopPropagation();
+                }}
+              ></CodeMirror>
+            );
+          })()}
+        </Show>
+        {typeof props.children === "function"
+          ? props.children?.(controls)
+          : props.children}
       </div>
+
+      <Show when={props.trash ?? props.editor}>
+        <div
+          class="pointer-events-none absolute inset-x-0 bottom-1 flex place-content-center opacity-100 transition-opacity duration-700"
+          classList={{
+            "!opacity-0": data().length == 0,
+          }}
+        >
+          <button
+            class="flex-0 pointer-events-auto p-1 transition-colors duration-300 hover:bg-fuchsia-300 dark:hover:bg-pink-500 [&.drop]:!bg-fuchsia-300 [&.drop]:dark:!bg-pink-500"
+            classList={{
+              "!pointer-events-none": data().length == 0,
+            }}
+            onClick={() => deleteAll()}
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes("text/value")) {
+                event.preventDefault();
+                event.target.classList.add("drop");
+              }
+            }}
+            onDragEnter={function (event) {
+              event.target.classList.add("drop");
+            }}
+            onDragLeave={function (event) {
+              event.target.classList.remove("drop");
+            }}
+            onDrop={(event) => {
+              deleteDatum(event.dataTransfer);
+
+              // eat the event to prevent reapplying the value.
+              event.preventDefault();
+              event.stopPropagation();
+              event.target.classList.remove("drop");
+            }}
+          >
+            <IconTablerTrash class="pointer-events-none" />
+          </button>
+        </div>
+      </Show>
       <Show when={!props.noIcon}>
         <span class="copy-icon absolute right-1 top-[50%] flex translate-y-[-50%] rounded-lg border-1 p-1 text-xl opacity-0 transition-opacity duration-150 dark:bg-neutral-600">
           <IconTablerCopy />
@@ -198,7 +407,6 @@ export function KeyValueCopierWidget(
           <IconTablerPlus />
         </span>
       </Show>
-      {props.children?.(controls)}
     </div>
   );
 }

@@ -23,7 +23,10 @@ import { urlEncodedFormTemplate } from "../schema/definition/encodings/url-encod
 import { createNumber } from "../schema/definition/scalar.js";
 import { hiddenTemplate } from "../schema/definition/structures/hidden.js";
 import { redact } from "../schema/definition/structures/redact.js";
-import { referenceTemplate } from "../schema/definition/structures/reference.js";
+import {
+  ReferenceSchematic,
+  referenceTemplate,
+} from "../schema/definition/structures/reference.js";
 import {
   muxTemplate,
   tuple,
@@ -64,7 +67,7 @@ export const bodyGlobals: Record<string, any> = {
   true: true,
   null: null,
   ...encodings,
-  $: (ref: string) => referenceTemplate({ ref }),
+  $: $ref,
   $bigint: <T>(x: Template<T>) => referenceTemplate<bigint>({}).$of(x).$bigint,
   $nullable: <T>(x: Template<T>) => referenceTemplate({}).$of(x).$nullable,
   $string: <T>(x: Template<T>) => referenceTemplate<string>({}).$of(x).$string,
@@ -94,6 +97,18 @@ export function getContentEncoding(encoding: InternalEncodingTypes) {
 
 export function jsonEncoding(template?: Template<unknown>): Schematic<string> {
   return encodingTemplate(jsonEncodingType, template);
+}
+
+function $ref(
+  template: TemplateStringsArray,
+  ...args: never[]
+): ReferenceSchematic<unknown>;
+function $ref(template: string): ReferenceSchematic<unknown>;
+function $ref(ref: TemplateStringsArray | string) {
+  if (typeof ref !== "string") {
+    ref = String.raw(ref);
+  }
+  return referenceTemplate({ ref });
 }
 
 export const jsonEncodingType: EncodingType<string, unknown> = {

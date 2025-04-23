@@ -22,7 +22,7 @@ import {
 import { twMerge } from "tailwind-merge";
 import HttpMethodIcon from "./HttpMethodIcon.tsx";
 import LoadingSplash from "./LoadingSplash.tsx";
-import { Trace } from "./request-history.ts";
+import { RelatedTraces, Trace } from "./request-history.ts";
 import { displayHttp } from "./display-util.ts";
 import { HTTP } from "pardon/formats";
 import { recv } from "pardon/utils";
@@ -36,19 +36,30 @@ export type HistoryTree = {
 
 export function RequestSummaryTree(props: {
   traces: Record<number, Trace>;
-  node: HistoryTree;
+  trace: number;
+  path?: number[];
   expandedSet: Set<string>;
-  isCurrent(trace: number): boolean;
+  related: RelatedTraces;
   onRestore(history: ExecutionHistory): void;
   clearTrace?(trace: number): void;
 }) {
-  const trace = createMemo(() => recv(props.traces[props.node.trace]));
+  const trace = createMemo(() => recv(props.traces[props.trace]));
+  const relation = createMemo(() =>
+    props.related.current === props.trace
+      ? "current"
+      : props.related.direct.includes(props.trace)
+        ? "direct"
+        : props.related.indirect.includes(props.trace)
+          ? "indirect"
+          : undefined,
+  );
+
   return (
     <RequestSummaryNode
       {...props}
       trace={trace()}
-      current={props.isCurrent(Number(props.node.trace))}
-      auto={props.node.auto}
+      relation={relation()}
+      auto={!props.traces[props.trace]?.tlr}
     >
       <KeyValueCopier
         values={trace().result?.inbound?.flow}
@@ -61,7 +72,7 @@ export function RequestSummaryTree(props: {
 
 export function RequestSummaryNode(props: {
   trace: Trace;
-  current?: boolean;
+  relation?: "current" | "direct" | "indirect";
   auto?: boolean;
   children?: JSX.Element;
   note?: JSX.Element;
@@ -72,7 +83,8 @@ export function RequestSummaryNode(props: {
     <li
       class="flex flex-1 flex-col"
       classList={{
-        "opacity-75": !props.trace?.tlr,
+        "opacity-75": !props.trace?.tlr && !props.relation,
+        "opacity-85": props.relation && props.relation !== "current",
       }}
     >
       <div class="flex w-full flex-1 flex-col pl-1">
@@ -82,7 +94,7 @@ export function RequestSummaryNode(props: {
           clearTrace={props.clearTrace}
           auto={props.auto}
           note={props.note}
-          current={props.current}
+          relation={props.relation}
         />
         {props.children}
       </div>
@@ -97,7 +109,7 @@ export function RequestSummary(
     onRestore(history: ExecutionHistory): void;
     clearTrace?(trace: number): void;
     note?: JSX.Element;
-    current?: boolean;
+    relation?: "current" | "direct" | "indirect";
   } & ComponentProps<"span">,
 ) {
   const [, spanProps] = splitProps(props, [
@@ -105,7 +117,7 @@ export function RequestSummary(
     "onRestore",
     "clearTrace",
     "note",
-    "current",
+    "relation",
   ]);
   const request = createMemo(() =>
     displayHttp(props.trace?.render?.outbound?.request),
@@ -115,11 +127,13 @@ export function RequestSummary(
   return (
     <div class="relative flex flex-1 flex-row gap-1 px-1 py-0.5 [&:hover>.faded]:opacity-75">
       <button
-        class="flex w-0 flex-1 overflow-hidden rounded-none p-0 text-left align-middle active:!bg-slate-300 dark:hover:!bg-slate-600/50 dark:active:!bg-slate-600"
+        class="relative left-0 flex w-0 flex-1 overflow-hidden rounded-none p-0 pl-0 text-left align-middle transition-all duration-200 active:!bg-slate-300 dark:hover:!bg-slate-600/50 dark:active:!bg-slate-600"
         classList={{
-          "bg-transparent": !props.current,
-          "bg-gray-400 bg-opacity-25": props.current,
-          "opacity-75": props.auto,
+          "bg-transparent": !props.relation,
+          "bg-gray-500 bg-opacity-40": props.relation === "current",
+          "bg-gray-500 bg-opacity-30 !left-2": props.relation === "direct",
+          "bg-gray-500 bg-opacity-15 !left-4": props.relation === "indirect",
+          "opacity-75": props.auto && !props.relation,
         }}
         onClick={() => {
           const {

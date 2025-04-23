@@ -10,14 +10,15 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 
-import { createMemo, createSelector, For } from "solid-js";
-import { manifest } from "../../signals/pardon-config.ts";
+import { createMemo, createSelector, createSignal, For } from "solid-js";
+import { fileManifest, manifest } from "../../signals/pardon-config.ts";
 import { CollectionTreeView } from "./CollectionTreeView.tsx";
 import type { AssetSource, AssetType, AssetInfo } from "pardon/runtime";
 import { CollectionTreeItem, Filters } from "./collection-tree-types.ts";
 import CornerControls from "../CornerControls.tsx";
 import { animation } from "../animate.ts";
 import Dialog from "corvu/dialog";
+import FileListEditor from "../editor/FileListEditor.tsx";
 
 void animation; // used via use:animation
 
@@ -176,31 +177,13 @@ export default function Services(props: {
 
   return (
     <div class="flex size-full min-h-0 flex-1 flex-col font-mono">
-      <div class="flex flex-col overflow-y-auto overflow-x-hidden">
+      <div class="fade-to-clear flex flex-col overflow-y-auto overflow-x-hidden [--clear-end-opacity:0.8] [--clear-start-opacity:0.5]">
         <For each={collection()}>
           {(item) => {
             return (
               <>
                 <div class="smb-1 relative border-t-[0.125rem] px-1 pb-1 text-sm font-bold dark:border-slate-400 dark:bg-slate-600 [&:not(:first-child)]:mt-3">
                   {item.name}
-                  <Dialog>
-                    <Dialog.Trigger class="absolute right-1 top-0.5 bg-transparent p-0">
-                      <IconTablerPlus />
-                    </Dialog.Trigger>
-                    <Dialog.Portal>
-                      <Dialog.Overlay class="absolute inset-0 bg-neutral-800 transition-opacity duration-1000 [&[data-closed]]:opacity-0 [&[data-open]]:opacity-25" />
-                      <Dialog.Content class="absolute inset-0 grid place-content-center">
-                        <div class="relative flex flex-col gap-2 rounded-lg border-2 bg-neutral-200 px-20 py-20 dark:border-neutral-400 dark:bg-neutral-600">
-                          <div>Create an asset (wip)</div>
-                          <input class="w-full px-1"></input>
-                          <div class="flex flex-1 place-content-between">
-                            <Dialog.Close class="p-1">Cancel</Dialog.Close>
-                            <Dialog.Close class="p-1">Create</Dialog.Close>
-                          </div>
-                        </div>
-                      </Dialog.Content>
-                    </Dialog.Portal>
-                  </Dialog>
                 </div>
                 <CollectionTreeView
                   class="text-sm"
@@ -234,15 +217,87 @@ export default function Services(props: {
       </div>
 
       <CornerControls
-        class="z-50 pb-1 pr-1"
+        class="z-20 pb-1 pr-1"
         placement="br"
+        flex="col"
         actions={{
           reload() {
             window.pardon.reload();
           },
         }}
-        unbuttoned={["reload"]}
+        unbuttoned={["reload", "add"]}
         icons={{
+          add: (
+            <Dialog>
+              {(context) => {
+                const [subPath, setSubPath] = createSignal("");
+                const typeOfFile = createMemo(() => {
+                  switch (true) {
+                    case subPath().endsWith(".https"):
+                      return "Create an https template";
+                    case subPath().endsWith(".mix.https"):
+                      return "Create an https template mixin";
+                    case subPath().endsWith(".flow.https"):
+                      return "Create an https flow";
+                    case subPath().endsWith(".http"):
+                      return "Create an sample http file";
+                    case subPath().endsWith("/defaults.yaml"):
+                      return "Organize defaults";
+                    case subPath().endsWith("/service.yaml"):
+                      return "Define configuration for a service";
+                    case subPath().endsWith("/config.yaml"):
+                      return "Refine configuration for a subdirectory of requests";
+                    case subPath().endsWith(".js"):
+                    case subPath().endsWith(".ts"):
+                      return "Create a helper script";
+                    default:
+                      return "Create an arbitrary file";
+                  }
+                });
+                return (
+                  <>
+                    <Dialog.Trigger class="smoothed-backdrop grid aspect-square place-content-center bg-inherit p-0 align-middle active:!bg-inherit">
+                      <IconTablerPlus />
+                    </Dialog.Trigger>
+                    <Dialog.Portal>
+                      <Dialog.Overlay class="absolute inset-0 z-30 bg-neutral-800 transition-opacity duration-1000 [&[data-closed]]:opacity-0 [&[data-open]]:opacity-25" />
+                      <Dialog.Content class="absolute inset-0 grid place-content-center">
+                        <div class="absolute inset-10 z-30 flex-col gap-2 rounded-lg border-2 bg-neutral-200 p-10 dark:border-neutral-400 dark:bg-neutral-600">
+                          <div class="flex size-full flex-col">
+                            <div>Create a new asset</div>
+                            <input
+                              class="w-full px-2 font-weird"
+                              value={subPath()}
+                              onInput={(event) =>
+                                setSubPath(event.target.value)
+                              }
+                            />
+                            <span>{typeOfFile()}</span>
+                            <div class="flex flex-1">
+                              <FileListEditor
+                                assets={fileManifest().crootnames.map(
+                                  (rootname, index) => ({
+                                    name: rootname,
+                                    path: fileManifest().croots[index] + "/",
+                                    content: "",
+                                    exists: false,
+                                  }),
+                                )}
+                                onSave={({ path, content }) => {
+                                  context.setOpen(false);
+                                  return { path: path + subPath(), content };
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </Dialog.Content>
+                    </Dialog.Portal>
+                  </>
+                );
+              }}
+            </Dialog>
+          ),
           reload: (
             <button
               class="flex bg-inherit p-0 text-xl active:!bg-inherit"

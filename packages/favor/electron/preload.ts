@@ -13,9 +13,6 @@ governing permissions and limitations under the License.
 import { contextBridge, ipcRenderer } from "electron";
 import { type PardonWorkerHandlers } from "./pardon-worker.js";
 
-type TestStepPayloads = any;
-type TracingHookPayloads = any;
-
 const initialSettings = new Promise<Preferences>((resolve, reject) => {
   const timeout = setTimeout(() => {
     reject("timeout");
@@ -111,9 +108,6 @@ const pardonElectronApi = {
   registerHistoryForwarder(forwarder: typeof pardonHistoryFowarder) {
     pardonHistoryFowarder = forwarder;
   },
-  registerTestSystemForwarder(forwarder: typeof pardonTestSystemFowarder) {
-    pardonTestSystemFowarder = forwarder;
-  },
 };
 
 export type PardonElectronApi = typeof pardonElectronApi;
@@ -125,14 +119,8 @@ let pardonHistoryFowarder:
   | {
       [Callback in keyof TracingHookPayloads]: (
         trace: number,
-        data: TracingHookPayloads[Callback]["trace"],
+        data: TracingHookPayloads[Callback],
       ) => void;
-    };
-
-let pardonTestSystemFowarder:
-  | undefined
-  | {
-      [Id in keyof TestStepPayloads]: (data: TestStepPayloads[Id]) => void;
     };
 
 ipcRenderer.addListener("trace:rendering", (_event, data) => {
@@ -153,12 +141,6 @@ ipcRenderer.addListener("trace:completed", (_event, data) => {
 
 ipcRenderer.addListener("trace:error", (_event, data) => {
   pardonHistoryFowarder?.onError(data.trace, data);
-});
-
-ipcRenderer.addListener("test:event", (_event, message) => {
-  pardonTestSystemFowarder?.[
-    (message as TestStepPayloads[keyof TestStepPayloads]).type
-  ]?.(message as any);
 });
 
 ipcRenderer.on("pardon:zen-mode", (_event, checked) => {

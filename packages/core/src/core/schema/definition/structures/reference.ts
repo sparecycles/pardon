@@ -63,7 +63,7 @@ type ReferenceTemplate<T> = {
   anull?: true;
 };
 
-type ReferenceSchematic<T> = Schematic<T> & {
+export type ReferenceSchematic<T> = Schematic<T> & {
   $of<T>(template: Template<T>): ReferenceSchematic<T>;
   readonly $key: ReferenceSchematic<T>;
   readonly $value: ReferenceSchematic<T>;

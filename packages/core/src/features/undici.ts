@@ -69,6 +69,10 @@ async function fetchSNI(
       ? serverhost
       : (await dns.resolve(serverhost, "A"))[0]);
 
+  if (hostip) {
+    console.info(`undici: resolved ${serverhost} = ${hostip}`);
+  }
+
   const servername = hostip ? url.host : undefined;
   const requestUrl = `${hostip ? `${url.protocol}//${hostip}` : url.origin}${url.pathname}${url.search}`;
 

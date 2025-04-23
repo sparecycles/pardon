@@ -46,8 +46,13 @@ import {
 const [cwd] = argv.slice(2);
 
 const tracingHooks = {
-  onRenderStart({ context: { trace, awaited, ask }, endpoint }) {
-    const payload = {
+  onRenderStart({
+    context: { trace, awaited, ask },
+    endpoint: {
+      configuration: { name: endpoint },
+    },
+  }) {
+    const payload: TracingHookPayloads["onRenderStart"] = {
       trace,
       context: { ask, endpoint },
       awaited: {
@@ -64,7 +69,7 @@ const tracingHooks = {
     context: { trace, awaited, timestamps, durations },
     outbound: { request, redacted },
   }) {
-    const payload = {
+    const payload: TracingHookPayloads["onRenderComplete"] = {
       trace,
       context: { timestamps, durations },
       awaited: {
@@ -86,24 +91,19 @@ const tracingHooks = {
       trace: payload as Optional<typeof payload, "secure">,
     };
   },
-  onSend({ context: { trace, timestamps, durations } }) {
-    const payload = {
-      trace,
-      context: { timestamps, durations },
-      timestamps,
-      durations,
-    };
-
+  onSend({ context: { trace } }) {
     return {
       id: "trace:sent" as const,
-      trace: payload,
+      trace: {
+        trace,
+      } satisfies TracingHookPayloads["onSend"],
     };
   },
   onResult({
     context: { awaited, trace, timestamps, durations },
     inbound: { response, redacted, values, flow, secrets, outcome },
   }) {
-    const payload = {
+    const payload: TracingHookPayloads["onResult"] = {
       trace,
       context: { timestamps, durations },
       awaited: {
@@ -137,7 +137,7 @@ const tracingHooks = {
         trace,
         step: error.step,
         error: String(error?.formatted ?? error),
-      },
+      } satisfies TracingHookPayloads["onError"],
     };
   },
 } as const satisfies Parameters<typeof traced>[0];

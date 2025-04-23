@@ -72,6 +72,55 @@ declare global {
 
   type Optional<T, Keys extends keyof T> = Omit<T, Keys> &
     Partial<Pick<T, Keys>>;
+
+  type TracingHookPayloads = {
+    onRenderStart: {
+      trace: number;
+      context: { ask: string; endpoint: string };
+      awaited: { requests: number[] };
+    };
+    onRenderComplete: {
+      trace: number;
+      context: unknown;
+      awaited: {
+        requests: number[];
+        results: number[];
+      };
+      outbound: {
+        request: RequestJSON;
+      };
+      secure?: {
+        outbound: {
+          request: RequestJSON;
+        };
+      };
+    };
+    onSend: {
+      trace: number;
+    };
+    onError: {
+      trace: number;
+      step: string;
+      error: any;
+    };
+    onResult: {
+      trace: number;
+      context: unknown;
+      awaited: { requests: number[]; results: number[] };
+      inbound: {
+        outcome?: string;
+        response: ResponseJSON;
+        values: Record<string, unknown>;
+        flow: Record<string, unknown>;
+      };
+      secure?: {
+        inbound: {
+          response: ResponseJSON;
+          values: Record<string, unknown>;
+        };
+      };
+    };
+  };
 }
 
 declare module "solid-js" {

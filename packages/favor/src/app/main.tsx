@@ -15,6 +15,7 @@ import Services, {
 } from "../components/collection/Services.tsx";
 import {
   batch,
+  ComponentProps,
   createEffect,
   createMemo,
   createResource,
@@ -59,6 +60,7 @@ import { persistJson } from "../util/persistence.ts";
 import { animation } from "../components/animate.ts";
 import KeyValueCopier, {
   KeyValueCopierWidget,
+  KvCopierControl,
   KvEntry,
   makeKeyValueCopierContext,
 } from "../components/KeyValueCopier.tsx";
@@ -101,7 +103,10 @@ export default function Main(
     { name: "scratch", ...persistJson },
   );
 
-  const [history, setHistory] = createSignal<ExecutionHistory>();
+  const [history, setHistory] = makePersisted(
+    createSignal<ExecutionHistory>(),
+    { name: "active-history", ...persistJson },
+  );
 
   const [currentExecutionSource, setCurrentExecutionSource] =
     createSignal<PardonExecutionSource>({
@@ -123,11 +128,15 @@ export default function Main(
   );
 
   createEffect(
-    on(currentExecutionSource, ({ http, values }) => {
-      setHistory();
-      setHttp(http);
-      setValues(values);
-    }),
+    on(
+      currentExecutionSource,
+      ({ http, values }) => {
+        setHistory();
+        setHttp(http);
+        setValues(values);
+      },
+      { defer: true },
+    ),
   );
 
   createEffect(() => relock() && setRedacted(true));
@@ -263,6 +272,26 @@ export default function Main(
     }),
   );
 
+  const [pardonInputScratchControls, setPardonInputScratchControls] =
+    createSignal<KvCopierControl>();
+
+  const [pardonInputScratchValues, setPardonInputScratchValues] = makePersisted(
+    createSignal<Record<string, unknown>>({}),
+    {
+      name: "input-scratch",
+      ...persistJson,
+    },
+  );
+
+  createEffect(
+    on(
+      () => pardonInputScratchControls()?.getValues(),
+      (values) => {
+        setPardonInputScratchValues(values ?? {});
+      },
+    ),
+  );
+
   const [responseResource] = createResource(
     currentExecution,
     async ({ response }) => {
@@ -271,13 +300,11 @@ export default function Main(
   );
 
   function restoreFromHistory(history: ExecutionHistory) {
-    if (history && requestResource.state === "ready") {
-      const currentRequestResult = requestResource();
+    if (history && contextResource.state === "ready") {
+      const activeContext = contextResource();
 
-      if (currentRequestResult.status === "fulfilled") {
-        const currentRequest = currentRequestResult.value;
-
-        if (currentRequest.context.trace === history.context.trace) {
+      if (activeContext.status === "fulfilled") {
+        if (activeContext.value.trace === history.context.trace) {
           setHistory();
 
           return;
@@ -297,7 +324,7 @@ export default function Main(
     if (request.status === "rejected") {
       switch (true) {
         case previewResource.state === "ready" &&
-          previewResource.latest.status === "fulfilled":
+          previewResource.latest?.status === "fulfilled":
           return `
 Error rendering
 ---
@@ -397,7 +424,9 @@ ${request.reason}
     if (key?.startsWith("endpoint:")) return key;
   });
 
-  const scratchValuesContext = makeKeyValueCopierContext(scratchValues());
+  const scratchValuesContext = makeKeyValueCopierContext({
+    initial: scratchValues(),
+  });
 
   createEffect(
     on(scratchValuesContext.data, (data) => setScratchValues(data), {
@@ -405,13 +434,12 @@ ${request.reason}
     }),
   );
 
-  const scratchDropTarget = {
+  const scratchDropTarget: Pick<
+    ComponentProps<"button">,
+    "onDragOver" | "onDrop"
+  > = {
     onDragOver(event) {
-      if (
-        event.dataTransfer.types.some((type) =>
-          ["text/value", "text/plain"].includes(type),
-        )
-      ) {
+      if (scratchValuesContext.controls.drag(event.dataTransfer)) {
         event.preventDefault();
       }
     },
@@ -441,14 +469,12 @@ ${request.reason}
       return Number(currentHistory.context.trace);
     }
 
-    const render = requestResource.latest;
-    if (render?.status !== "fulfilled") {
+    const context = contextResource.latest;
+    if (context?.status !== "fulfilled") {
       return;
     }
 
-    const request = render?.value;
-
-    return request.context.trace;
+    return context?.value.trace;
   });
 
   createEffect(() => {
@@ -469,24 +495,41 @@ ${request.reason}
   });
 
   const requestDisabled = createMemo<boolean>((previous) => {
-    return requestResource.state !== "ready"
-      ? previous
-      : requestResource.state === "ready" &&
-          (requestResource().status === "rejected" ||
-            ["inflight", "complete", "failed"].includes(
-              currentExecution()?.progress,
-            ));
+    switch (currentExecution().progress) {
+      case "preview":
+      case "pending":
+      case "complete":
+      case "failed":
+        return false;
+      case "rendering":
+        return previous;
+      case "errored":
+      case "inflight":
+        return true;
+    }
   });
 
   const newRequestDisabled = createMemo<boolean>((wasDisabled) => {
-    return (
-      Boolean(history()) ||
-      requestDisabled() ||
-      (requestResource.state === "ready" &&
-      currentExecution().progress === "pending"
-        ? false
-        : wasDisabled)
-    );
+    if (history()) {
+      return true;
+    }
+
+    switch (currentExecution()?.progress) {
+      case "preview":
+      case "pending":
+        if (previewResource.loading) {
+          return wasDisabled;
+        }
+        return previewResource.latest.status !== "fulfilled";
+      case "rendering":
+        return wasDisabled;
+      case "errored":
+      case "inflight":
+      case "complete":
+      case "failed":
+      default:
+        return true;
+    }
   });
 
   function refreshRequest() {
@@ -611,67 +654,12 @@ ${request.reason}
                           }
                         }
                       }}
-                      overlay={
-                        <>
-                          <Show when={Boolean(history())}>
-                            <div class="absolute inset-0 grid place-content-center align-middle">
-                              <button
-                                class="relative z-10 p-3"
-                                onclick={() => {
-                                  switch (currentExecution()?.progress) {
-                                    case "complete":
-                                    case "errored":
-                                      break;
-                                    case "failed":
-                                    case "preview":
-                                      setExecutionView("preview");
-                                      break;
-                                    case "inflight":
-                                    case "rendering":
-                                    case "pending":
-                                      setExecutionView("outbound");
-                                      break;
-                                  }
-                                  setHistory();
-                                }}
-                              >
-                                <IconTablerArrowBackUp class="absolute -left-2 -top-2" />
-                                <IconTablerPencil />
-                              </button>
-                            </div>
-                          </Show>
-                          <CornerControls
-                            placement="tr"
-                            flex="col"
-                            class="z-10 gap-1 bg-stone-200 p-0.5 dark:bg-slate-600"
-                            unbuttoned={["info"]}
-                            actions={{
-                              copy: () => {
-                                navigator.clipboard.writeText(
-                                  `${KV.stringify({ ...currentExecutionSource().values }, "\n", 2, "\n")}${http()}`,
-                                );
-                              },
-                            }}
-                            icons={{
-                              info: (
-                                <ConfigurationDrawer
-                                  class="!text-md flex bg-inherit p-0"
-                                  preview={createMemo(() => {
-                                    return previewResource?.state === "ready"
-                                      ? previewResource()
-                                      : undefined;
-                                  })()}
-                                >
-                                  <IconTablerSettings2 />
-                                </ConfigurationDrawer>
-                              ),
-                              copy: <IconTablerCopy />,
-                            }}
-                          />
-                        </>
-                      }
                       dragDrop={{
                         onDragOver(event) {
+                          if (history()) {
+                            return false;
+                          }
+
                           const { types } = event.dataTransfer;
                           if (
                             types.includes("text/http") ||
@@ -698,7 +686,96 @@ ${request.reason}
                           }
                         },
                       }}
-                    />
+                    >
+                      <Show when={Boolean(history())}>
+                        <div class="absolute inset-0 left-[40%] z-10">
+                          <KeyValueCopier
+                            editor
+                            class="absolute inset-0 z-0 bg-neutral-200/40 p-2 dark:bg-neutral-800/50"
+                            controls={setPardonInputScratchControls}
+                            values={pardonInputScratchValues()}
+                            noIcon
+                            dedup
+                          />
+                          <div class="absolute left-0 top-10 grid translate-x-[-85%] place-content-center align-middle">
+                            <button
+                              class="relative z-10 p-2.5"
+                              onclick={() => {
+                                pardonInputScratchControls()?.flushEditor?.();
+
+                                const inputScratchValues =
+                                  pardonInputScratchControls()?.getValues() ??
+                                  {};
+
+                                pardonInputScratchControls()?.deleteAll();
+
+                                if (Object.keys(inputScratchValues).length) {
+                                  setExecutionView("preview");
+                                  setCurrentExecutionSource(
+                                    ({ http, values }) => ({
+                                      http,
+                                      values: {
+                                        ...values,
+                                        ...inputScratchValues,
+                                      },
+                                    }),
+                                  );
+                                  setHistory();
+                                  return;
+                                }
+
+                                switch (currentExecution()?.progress) {
+                                  case "complete":
+                                  case "errored":
+                                    break;
+                                  case "failed":
+                                  case "preview":
+                                    setExecutionView("preview");
+                                    break;
+                                  case "inflight":
+                                  case "rendering":
+                                  case "pending":
+                                    setExecutionView("outbound");
+                                    break;
+                                }
+                                setHistory();
+                              }}
+                            >
+                              <IconTablerArrowLeft class="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 text-xl" />
+                              <IconTablerPencil class="text-xl" />
+                            </button>
+                          </div>
+                        </div>
+                      </Show>
+                      <CornerControls
+                        placement="tr"
+                        flex="col"
+                        class="z-10 gap-1 bg-stone-200 p-0.5 dark:bg-slate-600"
+                        unbuttoned={["info"]}
+                        actions={{
+                          copy: () => {
+                            navigator.clipboard.writeText(
+                              `${KV.stringify({ ...currentExecutionSource().values }, "\n", 2, "\n")}${http()}`,
+                            );
+                          },
+                        }}
+                        icons={{
+                          info: (
+                            <ConfigurationDrawer
+                              class="!text-md flex bg-inherit p-0"
+                              preview={createMemo(() => {
+                                return previewResource?.state === "ready"
+                                  ? previewResource()
+                                  : undefined;
+                              })()}
+                            >
+                              <IconTablerSettings2 />
+                            </ConfigurationDrawer>
+                          ),
+                          copy: <IconTablerCopy />,
+                        }}
+                      />
+                    </PardonInput>
                   </Resizable.Panel>
                 </Resizable>
               </Resizable.Panel>
@@ -712,47 +789,28 @@ ${request.reason}
                           view={executionView()}
                           onChange={setExecutionView}
                           controls={{
-                            preview: (
-                              <Show
-                                when={!history()}
-                                fallback={<IconTablerPencil />}
-                              >
-                                <IconTablerCode />
-                              </Show>
-                            ),
+                            preview: <IconTablerTemplate />,
                             outbound: <IconTablerUpload />,
                             inbound: <IconTablerDownload />,
                             values: <IconTablerReceipt />,
                           }}
                           disabled={{
+                            preview: Boolean(history()),
                             inbound:
-                              !history() && responseResource.state !== "ready",
+                              !history() &&
+                              (responseResource.state !== "ready" ||
+                                (responseResource.state === "ready" &&
+                                  responseResource().status === "rejected" &&
+                                  requestResource.state === "ready" &&
+                                  requestResource().status === "rejected")),
                             values:
                               !history() &&
                               (responseResource.state !== "ready" ||
                                 responseResource().status !== "fulfilled"),
                           }}
-                          controlProps={([, setView]) => ({
-                            preview: {
-                              onClick: (event) => {
-                                if (!history()) {
-                                  return;
-                                }
-
-                                batch(() => {
-                                  setView("preview");
-                                  const { http, values } =
-                                    displayedExecutionSource();
-
-                                  setHttp(http);
-                                  setValues({ ...values });
-                                  setHistory();
-                                });
-                                event.preventDefault();
-                              },
-                            },
+                          controlProps={{
                             values: scratchDropTarget,
-                          })}
+                          }}
                           defaulting={createMemo(() => {
                             switch (currentExecution()?.progress) {
                               case "rendering":
@@ -832,8 +890,11 @@ ${request.reason}
                               },
                             );
 
-                            const requestUri = createMemo(
-                              (previousRequestUri) => {
+                            const requestInfo = createMemo(
+                              (previousRequestInfo?: {
+                                method: string;
+                                url: string;
+                              }) => {
                                 const currentHistory = history();
                                 if (currentHistory) {
                                   const { method, url } =
@@ -841,20 +902,37 @@ ${request.reason}
                                   return { method, url };
                                 }
 
-                                var rendered =
+                                let http: string;
+
+                                if (
+                                  view() === "preview" &&
+                                  requestResource.loading
+                                ) {
+                                  if (
+                                    previewResource.latest?.status ===
+                                    "fulfilled"
+                                  ) {
+                                    http = previewResource.latest.value.http;
+                                  } else {
+                                    return previousRequestInfo ?? {};
+                                  }
+                                } else if (
                                   requestResource.latest?.status === "fulfilled"
-                                    ? requestResource.latest.value
-                                    : previewResource.latest?.status ===
-                                        "fulfilled"
-                                      ? previewResource.latest.value
-                                      : null;
-                                if (rendered?.http) {
+                                ) {
+                                  http = requestResource.latest.value.http;
+                                } else if (
+                                  previewResource.latest?.status === "fulfilled"
+                                ) {
+                                  http = previewResource.latest.value.http;
+                                }
+
+                                if (http) {
                                   const {
                                     method,
                                     origin,
                                     pathname,
                                     searchParams,
-                                  } = HTTP.parse(rendered.http);
+                                  } = HTTP.parse(http);
 
                                   return {
                                     method,
@@ -862,28 +940,13 @@ ${request.reason}
                                   };
                                 }
 
-                                try {
-                                  const previewResult = previewResource();
-                                  if (previewResult.status === "fulfilled") {
-                                    const {
-                                      method,
-                                      origin,
-                                      pathname,
-                                      searchParams,
-                                    } = HTTP.parse(previewResult.value.http);
-
-                                    return {
-                                      method,
-                                      url: `${origin}${pathname}${searchParams}`,
-                                    };
-                                  } else if (
-                                    previewResult.reason === "history"
-                                  ) {
-                                    return previousRequestUri;
-                                  }
-                                } catch (error) {
-                                  void error;
-                                  // continue
+                                if (
+                                  !previewResource.loading &&
+                                  previewResource.latest.status ===
+                                    "rejected" &&
+                                  previewResource.latest.reason === "history"
+                                ) {
+                                  return previousRequestInfo ?? {};
                                 }
 
                                 return { method: null, url: "" };
@@ -956,6 +1019,21 @@ ${request.reason}
                               return error ?? request;
                             });
 
+                            createEffect(() => {
+                              if (
+                                !history() &&
+                                currentExecution().progress === "errored" &&
+                                ["inbound", "values"].includes(view())
+                              ) {
+                                if (
+                                  requestResource.state === "ready" &&
+                                  requestResource().status === "rejected"
+                                ) {
+                                  setView("outbound");
+                                }
+                              }
+                            });
+
                             return (
                               <>
                                 <div class="flex w-full min-w-0 flex-initial flex-row gap-1 p-2 pr-8">
@@ -966,20 +1044,20 @@ ${request.reason}
                                     classList={{
                                       "light:bg-orange-300 dark:bg-yellow-900":
                                         ["POST", "PUT", "DELETE"].includes(
-                                          requestUri().method,
+                                          requestInfo()?.method,
                                         ),
                                       "light:bg-green-300 dark:bg-green-900": [
                                         "GET",
                                         "HEAD",
                                         "OPTIONS",
-                                      ].includes(requestUri().method),
+                                      ].includes(requestInfo().method),
                                       "light:bg-red-300 dark:bg-fuchsia-900": [
                                         "DELETE",
-                                      ].includes(requestUri().method),
+                                      ].includes(requestInfo()?.method),
                                     }}
                                     onClick={() => {
                                       if (requestNotReady()) {
-                                        return;
+                                        // return;
                                       }
 
                                       currentExecution()?.send();
@@ -991,10 +1069,10 @@ ${request.reason}
                                     }}
                                   >
                                     <div class="flex flex-row place-content-start gap-2 font-mono">
-                                      <span>{requestUri().method}</span>
+                                      <span>{requestInfo()?.method}</span>
                                       <span class="my-1 w-[1px] bg-current"></span>
                                       <span class="overflow-hidden overflow-ellipsis whitespace-nowrap">
-                                        {requestUri().url}
+                                        {requestInfo()?.url}
                                       </span>
                                       <Show
                                         when={
@@ -1019,28 +1097,48 @@ ${request.reason}
 
                                   <button
                                     class="ml-1.5 aspect-square flex-initial p-1 text-xl"
-                                    disabled={Boolean(history())}
+                                    disabled={
+                                      !history() &&
+                                      currentExecution()?.progress == "inflight"
+                                    }
                                     onClick={() => {
                                       if (history()) {
-                                        setView("preview");
-                                        setHistory();
+                                        batch(() => {
+                                          setView("preview");
+                                          const { http, values } =
+                                            displayedExecutionSource();
+
+                                          setHttp(http);
+                                          setValues({ ...values });
+                                          setHistory();
+                                        });
                                       } else {
                                         refreshRequest();
                                         setView("outbound");
                                       }
                                     }}
                                   >
-                                    <span
-                                      use:animation={[
-                                        "animate-cw-spin",
-                                        () =>
-                                          currentExecution()?.progress ===
-                                          "rendering",
-                                      ]}
-                                      class="smoothed-backdrop !bg-opacity-50"
+                                    <Show
+                                      when={!history()}
+                                      fallback={
+                                        <div class="relative">
+                                          <IconTablerReload class="absolute left-0 top-0 -translate-x-1/4 -translate-y-1/4 text-xl" />
+                                          <IconTablerPencil class="relative translate-x-1/4 translate-y-1/4 text-xl" />
+                                        </div>
+                                      }
                                     >
-                                      <IconTablerReload />
-                                    </span>
+                                      <span
+                                        use:animation={[
+                                          "animate-cw-spin",
+                                          () =>
+                                            currentExecution()?.progress ===
+                                            "rendering",
+                                        ]}
+                                        class="smoothed-backdrop !bg-opacity-50"
+                                      >
+                                        <IconTablerReload />
+                                      </span>
+                                    </Show>
                                   </button>
                                 </div>
                                 <Switch>
@@ -1049,7 +1147,7 @@ ${request.reason}
                                       readonly
                                       nowrap
                                       value={currentPreview()}
-                                      class="flex-1 [&_.cm-content]:pr-6"
+                                      class="flex-1 [--clear-start-opacity:0] [&_.cm-content]:pr-6"
                                     />
                                   </Match>
                                   <Match when={view() == "outbound"}>
@@ -1058,7 +1156,7 @@ ${request.reason}
                                       nowrap
                                       value={currentRequest()}
                                       disabled={requestDisabled()}
-                                      class="flex-1 [&_.cm-content]:pr-6"
+                                      class="flex-1[&_.cm-content]:pr-6"
                                     />
                                   </Match>
                                   <Match when={view() == "inbound"}>
@@ -1176,7 +1274,7 @@ ${request.reason}
                       ) : (
                         <IconTablerLockOpen class="scale-150 dark:text-neutral-400" />
                       )}
-                      <IconTablerEye class="absolute bottom-[-1px] scale-75" />
+                      <IconTablerEye class="absolute bottom-[-2px] scale-75" />
                     </>
                   )}
                 </Toggle>
@@ -1193,7 +1291,7 @@ ${request.reason}
                     <Match when={view() == "history"}>
                       <RequestHistory
                         onRestore={restoreFromHistory}
-                        isCurrent={createSelector(currentTrace)}
+                        currentTrace={currentTrace()}
                       />
                     </Match>
                     <Match when={view() == "recall"}>
@@ -1205,65 +1303,12 @@ ${request.reason}
                     <Match when={view() === "scratch"}>
                       <KeyValueCopierWidget
                         class="flex size-0 min-h-full min-w-full overflow-auto bg-neutral-200 p-2 dark:bg-stone-800"
-                        {...scratchDropTarget}
+                        {...(scratchDropTarget as unknown as Partial<
+                          ComponentProps<"div">
+                        >)}
                         context={scratchValuesContext}
-                      >
-                        {({ data, deleteDatum, deleteAll }) => {
-                          createEffect(
-                            on(data, (data) => setScratchValues(data), {
-                              defer: true,
-                            }),
-                          );
-
-                          return (
-                            <>
-                              <div
-                                class="pointer-events-none absolute inset-x-0 bottom-1 flex place-content-center opacity-100 transition-opacity duration-700"
-                                classList={{
-                                  "!opacity-0":
-                                    Object.keys(scratchValues() ?? {}).length ==
-                                    0,
-                                }}
-                              >
-                                <button
-                                  class="flex-0 pointer-events-auto p-1 transition-colors duration-300 hover:bg-fuchsia-300 dark:hover:bg-pink-500 [&.drop]:!bg-fuchsia-300 [&.drop]:dark:!bg-pink-500"
-                                  classList={{
-                                    "!pointer-events-none":
-                                      Object.keys(scratchValues() ?? {})
-                                        .length == 0,
-                                  }}
-                                  onClick={() => deleteAll()}
-                                  onDragOver={(event) => {
-                                    if (
-                                      event.dataTransfer.types.includes(
-                                        "text/value",
-                                      )
-                                    ) {
-                                      event.preventDefault();
-                                      event.target.classList.add("drop");
-                                    }
-                                  }}
-                                  onDragEnter={function (event) {
-                                    event.target.classList.add("drop");
-                                  }}
-                                  onDragLeave={function (event) {
-                                    event.target.classList.remove("drop");
-                                  }}
-                                  onDrop={(event) => {
-                                    deleteDatum(event.dataTransfer);
-
-                                    // eat the event to prevent reapplying the value.
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                  }}
-                                >
-                                  <IconTablerTrash class="pointer-events-none" />
-                                </button>
-                              </div>
-                            </>
-                          );
-                        }}
-                      </KeyValueCopierWidget>
+                        editor
+                      />
                     </Match>
                   </Switch>
                 </Resizable.Panel>

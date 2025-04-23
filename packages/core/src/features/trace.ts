@@ -17,25 +17,28 @@ import { disconnected, tracking } from "../core/tracking.js";
 import { hookExecution } from "../core/execution/execution-hook.js";
 import { withoutEvaluationScope } from "../core/schema/core/context-util.js";
 import { PardonExecutionError } from "../core/execution/pardon-execution.js";
+import { LayeredEndpoint } from "../config/collection-types.js";
 
 let notifier:
   | {
-      onRenderStart(traced: TracedRequest): void;
-      onRenderComplete(
-        rendered: TracedRequest & {
-          outbound: Omit<ProcessedHookInput["outbound"], "evaluationScope">;
-        },
-      ): void;
-      onSend(
-        rendered: TracedRequest & {
-          outbound: Omit<ProcessedHookInput["outbound"], "evaluationScope">;
-        },
-      ): void;
+      onRenderStart(traced: TracedRenderStart): void;
+      onRenderComplete(rendered: TracedRenderComplete): void;
+      onSend(rendered: TracedRenderComplete): void;
       onResult(traced: TracedResult): void;
       onError(traced: TracedError): void;
     }
   | undefined
   | null = undefined;
+
+export type TracedRenderStart = TracedRequest<{
+  ask?: string;
+}> & { endpoint: LayeredEndpoint };
+
+export type TracedRenderComplete = TracedRequest<{
+  awaited: { requests: TracedRequest[]; results: TracedResult[] };
+}> & {
+  outbound: Omit<ProcessedHookInput["outbound"], "evaluationScope">;
+};
 
 export type PardonTraceExtension<Ext = unknown> = {
   awaited: {
