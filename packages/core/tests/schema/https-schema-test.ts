@@ -310,6 +310,7 @@ describe("https-schema-tests", () => {
     )!;
 
     const { output } = await renderSchema(schema!, new ScriptEnvironment())!;
+
     assert.equal(output.body, `{"x":10,"abc":"y"}`);
   });
 

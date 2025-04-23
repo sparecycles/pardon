@@ -62,6 +62,7 @@ export const encodings = {
     if (typeof template === "function") {
       return template as Schematic<string>;
     }
+
     return jsonEncoding(template);
   },
 } satisfies Record<string, (...args: any) => Template<string>>;

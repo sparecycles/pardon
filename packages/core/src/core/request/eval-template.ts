@@ -14,13 +14,12 @@ import {
   jsonSchemaTransform,
   syncEvaluation,
 } from "../evaluation/expression.js";
-import { Schematic } from "../schema/core/types.js";
 import { referenceTemplate } from "../schema/definition/structures/reference.js";
 
 export function evalTemplate(
   schemaSource: string,
   globals: Record<string, unknown>,
-): Schematic<unknown> {
+): unknown {
   return syncEvaluation(`${schemaSource}`, {
     binding(name) {
       if (name in globals) {
@@ -34,5 +33,5 @@ export function evalTemplate(
       return undefined;
     },
     transform: jsonSchemaTransform,
-  }) as Schematic<unknown>;
+  });
 }

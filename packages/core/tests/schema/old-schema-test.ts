@@ -299,16 +299,15 @@ describe("schema tests", () => {
       ],
     });
 
-    s = merge(
-      s,
-      muxContext(s, {
-        list: [
-          {
-            a: "{{@a = 'a:a:a'}}:{{qqq = 'q:q'}}",
-          },
-        ],
-      }),
-    )!;
+    const mc = muxContext(s, {
+      list: [
+        {
+          a: "{{@a = 'a:a:a'}}:{{qqq = 'q:q'}}",
+        },
+      ],
+    });
+
+    s = merge(s, mc)!;
 
     const rendered = await executeOp(s, "render", renderCtx(s));
 

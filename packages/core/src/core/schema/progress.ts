@@ -74,7 +74,7 @@ export class ProgressiveMatch<T extends RequestObject | ResponseObject>
         {
           mode: this.match ? "match" : "mux",
           phase: "validate",
-          ...extension.meta,
+          ...(this.object as any)?.meta,
         },
         extended.schema,
         this.object,

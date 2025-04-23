@@ -10,7 +10,10 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 import MIME from "whatwg-mimetype";
-import { referenceTemplate } from "../schema/definition/structures/reference.js";
+import {
+  referenceTemplate,
+  ReferenceTemplateOps,
+} from "../schema/definition/structures/reference.js";
 import { FetchObject, ResponseObject } from "./fetch-pattern.js";
 import { urlEncodedTemplate } from "../schema/definition/encodings/url-encoded.js";
 import { headersTemplate } from "../schema/definition/encodings/headers-encoding.js";
@@ -29,6 +32,8 @@ import {
   defineSchema,
   defineSchematic,
   executeOp,
+  exposeSchematic,
+  isSchematic,
   merge,
 } from "../schema/core/schema-ops.js";
 import { encodings, EncodingTypes } from "./body-template.js";
@@ -91,10 +96,7 @@ type BodySchematicOps = SchematicOps<string> & {
   readonly body: { readonly encoding?: EncodingTypes };
 };
 
-export function bodySchema(
-  encoding?: EncodingTypes,
-  schema?: Schema<string>,
-): Schema<string> {
+export function bodySchema(schema?: Schema<string>): Schema<string> {
   return defineSchema<string>({
     scope(context) {
       if (schema) {
@@ -112,7 +114,7 @@ export function bodySchema(
       const { template } = context;
 
       if (template === undefined || template === "") {
-        return bodySchema(encoding, schema);
+        return bodySchema(schema);
       }
 
       if (typeof template !== "string") {
@@ -122,53 +124,82 @@ export function bodySchema(
         );
       }
 
-      if (context.mode === "match" && schema) {
-        return bodySchema(encoding, merge(schema, { ...context }));
+      let encoding = context.meta?.body as EncodingTypes | undefined;
+
+      if (context.mode === "match") {
+        if (schema) {
+          return bodySchema(merge(schema, { ...context }));
+        }
+
+        encoding ??= guessContentType(template) ?? "raw";
+        const matchTemplate =
+          encoding === "json" ? JSON.parse(template) : template;
+
+        const merged = merge(schema ?? stubSchema(), {
+          ...context,
+          template: encodings[`$${encoding}`](matchTemplate),
+        });
+
+        return merged && bodySchema(merged);
       }
 
-      // FIXME: this is a bit convoluted
+      if (encoding) {
+        const encodedTemplate = encodings[`$${encoding}`](template);
 
-      const selfEncoding = (context.meta?.body as any) ?? encoding;
+        const encodedMergeContext = {
+          ...context,
+          template: encodedTemplate,
+        };
 
-      const thisEncoding =
-        context.mode === "match"
-          ? (selfEncoding ?? guessContentType(template))
-          : selfEncoding === "json"
-            ? "template"
-            : (selfEncoding ?? "template");
+        const merged = merge(schema ?? stubSchema(), encodedMergeContext);
 
-      const thisTemplate =
-        thisEncoding === "json" ? JSON.parse(template) : template;
+        if (merged) {
+          return bodySchema(merged);
+        }
+      }
 
       try {
-        const merged = merge(schema ?? stubSchema(), {
-          ...context,
-          template: encodings[`$${thisEncoding}`](thisTemplate),
-        });
-        return merged && bodySchema(selfEncoding, merged);
-      } catch (error) {
-        // on error, try using any exisitng schema
-        if (schema) {
-          const merged = merge(schema, context);
-          if (merged) {
-            return merged && bodySchema(selfEncoding, merged);
-          }
-        }
+        const templateEncoded = encodings.$template(template);
 
+        // special case to enable "xyz=123" single-value forms that otherwise parse as valid
+        // templates to be still treated as forms.
         if (
-          thisEncoding !== "template" ||
-          !selfEncoding ||
-          context.mode === "match"
+          schema &&
+          isSchematic(templateEncoded) &&
+          exposeSchematic<ReferenceTemplateOps<unknown>>(templateEncoded)
+            .reference
         ) {
-          throw error;
+          throw new Error("cannot merge body reference template encodings");
         }
 
         const merged = merge(schema ?? stubSchema(), {
           ...context,
-          template: encodings[`$${selfEncoding}`](template),
+          template: templateEncoded,
         });
+        if (merged) {
+          return merged && bodySchema(merged);
+        }
+      } catch (error) {
+        void error;
+      }
 
-        return merged && bodySchema(selfEncoding, merged);
+      // on error, final fallback to any existing schema with no template encoding.
+      if (schema) {
+        const merged = merge(schema, context);
+        if (merged) {
+          return bodySchema(merged);
+        }
+      }
+
+      // if that fails and there wasn't an encoding, encode as raw
+      if (!encoding) {
+        const merged = merge(stubSchema(), {
+          ...context,
+          template: encodings.$raw(template),
+        });
+        if (merged) {
+          return bodySchema(merged);
+        }
       }
     },
   });
@@ -178,7 +209,7 @@ export function bodyTemplate(encoding?: EncodingTypes): Schematic<string> {
   return defineSchematic<BodySchematicOps>({
     body: { encoding },
     expand(context) {
-      return merge(bodySchema(encoding), context)!;
+      return merge(bodySchema(), context)!;
     },
   });
 }
