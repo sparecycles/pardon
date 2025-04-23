@@ -414,8 +414,8 @@ export class PardonExecutionError extends Error {
     const reasons: string[] = [];
 
     while (error?.["cause"] !== undefined) {
-      reasons.unshift(String(error?.["message"] ?? error));
       error = error["cause"];
+      reasons.unshift(String(error?.["message"] ?? error));
     }
 
     reasons.unshift(String(this?.["message"] ?? this));

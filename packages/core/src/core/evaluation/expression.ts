@@ -32,9 +32,10 @@ const expressionProject = new Project({
   compilerOptions: {
     allowJs: true,
     noCheck: true,
-    strict: false,
+    strict: true,
     target: ScriptTarget.ES2022,
     module: ModuleKind.ES2022,
+    noEmitOnError: true,
   },
   useInMemoryFileSystem: true,
   manipulationSettings: {
@@ -54,9 +55,17 @@ export function applyTsMorph(
     { overwrite: true },
   );
 
+  const errors = exprSourceFile
+    .getPreEmitDiagnostics()
+    .filter((diag) => diag.getCategory() === ts.DiagnosticCategory.Error);
+
+  if (errors.length > 0) {
+    throw new PardonError(String(errors[0].getMessageText()));
+  }
+
   exprSourceFile
     .getExportAssignment((assignment) => !assignment.isExportEquals())!
-    .getExpression()!
+    .getExpression()
     .transform(transform);
 
   const result = expressionProject.emitToMemory({
