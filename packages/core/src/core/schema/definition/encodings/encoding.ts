@@ -15,7 +15,6 @@ import {
   Schema,
   SchemaMergingContext,
   SchemaRenderContext,
-  Schematic,
   SchematicOps,
   Template,
 } from "../../core/types.js";
@@ -28,10 +27,13 @@ import {
 } from "../../core/schema-ops.js";
 import { templateSchematic } from "../../template.js";
 
-export type EncodingType<T, S> = {
-  as: T extends string ? "string" : Exclude<string, "string">;
-  decode(context: SchemaMergingContext<T>): S | undefined;
-  encode(output: S | undefined, context: SchemaRenderContext): T | undefined;
+export type EncodingType<Outer, Inner> = {
+  as: Outer extends string ? "string" : Exclude<string, "string">;
+  decode(context: SchemaMergingContext<Outer>): Template<Inner> | undefined;
+  encode(
+    value: Inner | undefined,
+    context: SchemaRenderContext,
+  ): Outer | undefined;
 };
 
 function decode<T, S>(
@@ -67,9 +69,16 @@ export type EncodingSchematicOps<T, S> = SchematicOps<T> & {
 export function encodingTemplate<T, S>(
   encoding: EncodingType<T, S>,
   template?: Template<S>,
-): Schematic<T> {
+  source?: NoInfer<S>,
+): Template<T> {
   return templateSchematic(
-    (context) => encodingSchema(encoding, context.expand(template)),
+    (context) => {
+      let inner: Schema<S> | undefined = context.expand(template);
+      if (source !== undefined) {
+        inner = merge(inner, { ...context, template: source });
+      }
+      return (inner && encodingSchema(encoding, inner))!;
+    },
     {
       encoding() {
         return encoding;

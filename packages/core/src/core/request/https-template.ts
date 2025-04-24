@@ -15,10 +15,10 @@ import {
   ReferenceTemplateOps,
 } from "../schema/definition/structures/reference.js";
 import { FetchObject, ResponseObject } from "./fetch-pattern.js";
-import { urlEncodedTemplate } from "../schema/definition/encodings/url-encoded.js";
+import { queryEncodingType } from "../schema/definition/encodings/url-encoded.js";
 import { headersTemplate } from "../schema/definition/encodings/headers-encoding.js";
 import { datums } from "../schema/definition/datum.js";
-import { scopedFields } from "../schema/scheming.js";
+import { mvKeyedTuples, scopedFields } from "../schema/scheming.js";
 import { hiddenTemplate } from "../schema/definition/structures/hidden.js";
 import { diagnostic } from "../schema/core/context-util.js";
 import { stubSchema } from "../schema/definition/structures/stub.js";
@@ -39,6 +39,7 @@ import {
 import { encodings, EncodingTypes } from "./body-template.js";
 import { JSON } from "../json.js";
 import { mixing } from "../schema/core/contexts.js";
+import { encodingTemplate } from "../schema/definition/encodings/encoding.js";
 
 function isJson(body: string) {
   try {
@@ -249,16 +250,12 @@ const pathnameTemplate = (base: string) =>
     },
   });
 
-export function httpsRequestSchema({
-  search: { multivalue } = {},
-}: { search?: { multivalue?: boolean } } = {}) {
+export function httpsRequestSchema() {
   return mixing<HttpsRequestObject>({
     method: "{{method = 'GET'}}",
     origin: originTemplate("{{?:origin}}"),
     pathname: pathnameTemplate("{{...pathname}}"),
-    searchParams: referenceTemplate<URLSearchParams>({
-      ref: "search",
-    }).$of(urlEncodedTemplate({ multivalue })),
+    searchParams: encodingTemplate(queryEncodingType, mvKeyedTuples),
     headers: headersTemplate(),
     body: bodyReference(bodyTemplate()),
     computations: hiddenTemplate<Record<string, unknown>>(),

@@ -95,9 +95,7 @@ class PardonEndpointMatcher {
 
     this.implied = scalars(context.values);
 
-    this.archetypeSchema = httpsRequestSchema({
-      search: { multivalue: request?.meta?.searchParams == "multi" },
-    }) as Schema<HttpsRequestObject>;
+    this.archetypeSchema = httpsRequestSchema() as Schema<HttpsRequestObject>;
   }
 
   match() {

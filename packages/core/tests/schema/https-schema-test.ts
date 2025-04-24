@@ -32,9 +32,7 @@ import { httpsRequestSchema } from "../../src/core/request/https-template.js";
 
 describe("https-schema-tests", () => {
   it("should abc", async () => {
-    const jsonBaseSchema = httpsRequestSchema({
-      search: { multivalue: false },
-    });
+    const jsonBaseSchema = httpsRequestSchema();
 
     const matchingContext = mixContext(
       jsonBaseSchema,

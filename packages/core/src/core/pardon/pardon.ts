@@ -225,9 +225,7 @@ export const PardonFetchExecution = pardonExecution({
         },
       };
 
-      const archetype = httpsRequestSchema({
-        search: { multivalue: request?.meta?.searchParams == "multi" },
-      });
+      const archetype = httpsRequestSchema();
 
       const muxed = mergeSchema(
         { mode: "mux", phase: "build" },

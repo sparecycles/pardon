@@ -20,7 +20,6 @@ export type SimpleRequestInit = Omit<RequestInit, "body"> & {
 
 export type RequestMeta = Record<string, string> & {
   resolve?: string;
-  searchParams?: "multi" | (string & {});
   body?: EncodingTypes;
 };
 

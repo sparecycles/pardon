@@ -19,7 +19,10 @@ import {
   EncodingType,
 } from "../schema/definition/encodings/encoding.js";
 import { textTemplate } from "../schema/definition/encodings/text-encoding.js";
-import { urlEncodedFormTemplate } from "../schema/definition/encodings/url-encoded.js";
+import {
+  formEncodingType,
+  parseForm,
+} from "../schema/definition/encodings/url-encoded.js";
 import { createNumber } from "../schema/definition/scalar.js";
 import { hiddenTemplate } from "../schema/definition/structures/hidden.js";
 import { redact } from "../schema/definition/structures/redact.js";
@@ -34,6 +37,7 @@ import {
   makeKeyed,
   mixTemplate,
   matchTemplate,
+  mvKeyedTuples,
 } from "../schema/scheming.js";
 import { evalTemplate } from "./eval-template.js";
 
@@ -41,12 +45,12 @@ export const encodings = {
   $json(value: unknown | Template<unknown>) {
     return jsonEncoding(value);
   },
-  $form(value: string | Record<string, string> | [string, string][]) {
-    if (typeof value === "string") {
-      return muxTemplate(urlEncodedFormTemplate(value));
-    }
-
-    return urlEncodedFormTemplate(value);
+  $form(value?: string | Record<string, string> | [string, string][]) {
+    return encodingTemplate(
+      formEncodingType,
+      mvKeyedTuples,
+      parseForm(value),
+    ) as Template<string>;
   },
   $base64(value: string | Template<string>) {
     return base64Encoding(value);
