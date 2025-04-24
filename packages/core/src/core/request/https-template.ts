@@ -93,7 +93,7 @@ export function bodyReference(template: Template<string>): Schematic<string> {
 }
 
 type BodySchematicOps = SchematicOps<string> & {
-  readonly body: { readonly encoding?: EncodingTypes };
+  readonly body: object;
 };
 
 export function bodySchema(schema?: Schema<string>): Schema<string> {
@@ -205,12 +205,12 @@ export function bodySchema(schema?: Schema<string>): Schema<string> {
   });
 }
 
-export function bodyTemplate(encoding?: EncodingTypes): Schematic<string> {
+export function bodyTemplate(): Schematic<string> {
   return defineSchematic<BodySchematicOps>({
-    body: { encoding },
     expand(context) {
       return merge(bodySchema(), context)!;
     },
+    body: {},
   });
 }
 
@@ -249,10 +249,9 @@ const pathnameTemplate = (base: string) =>
     },
   });
 
-export function httpsRequestSchema(
-  encoding?: EncodingTypes,
-  { search: { multivalue } = {} }: { search?: { multivalue?: boolean } } = {},
-) {
+export function httpsRequestSchema({
+  search: { multivalue } = {},
+}: { search?: { multivalue?: boolean } } = {}) {
   return mixing<HttpsRequestObject>({
     method: "{{method = 'GET'}}",
     origin: originTemplate("{{?:origin}}"),
@@ -261,14 +260,12 @@ export function httpsRequestSchema(
       ref: "search",
     }).$of(urlEncodedTemplate({ multivalue })),
     headers: headersTemplate(),
-    body: bodyReference(bodyTemplate(encoding)),
+    body: bodyReference(bodyTemplate()),
     computations: hiddenTemplate<Record<string, unknown>>(),
   });
 }
 
-export function httpsResponseSchema(
-  encoding?: EncodingTypes,
-): Schema<ResponseObject> {
+export function httpsResponseSchema(): Schema<ResponseObject> {
   return mixing<ResponseObject>({
     ...scopedFields("res", {
       status: datums.pattern<string>("{{status}}", {
@@ -279,6 +276,6 @@ export function httpsResponseSchema(
       statusText: datums.datum("{{?statusText}}"),
     }),
     headers: headersTemplate(),
-    body: bodyReference(bodyTemplate(encoding)),
+    body: bodyReference(bodyTemplate()),
   });
 }

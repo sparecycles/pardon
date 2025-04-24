@@ -98,7 +98,7 @@ export function createPostrenderContext<T>(
 export type ContextMeta = {
   mode: SchemaMergingContext<unknown>["mode"];
   phase: SchemaMergingContext<unknown>["phase"];
-};
+} & Record<string, string>;
 
 export function createMergingContext<T>(
   { mode, phase, ...meta }: ContextMeta,
@@ -109,7 +109,7 @@ export function createMergingContext<T>(
   const context = {
     mode,
     phase,
-    meta: meta,
+    meta,
     keys: [],
     evaluationScopePath: [],
     environment,
@@ -139,4 +139,12 @@ export function getContextualValues(
     ...context.environment.implied(),
     ...context.evaluationScope.resolvedValues(options),
   };
+}
+
+export function contextMeta({
+  mode,
+  phase,
+  meta,
+}: SchemaMergingContext<unknown> & SchemaContext) {
+  return { mode, phase, ...meta };
 }

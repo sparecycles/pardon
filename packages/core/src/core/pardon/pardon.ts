@@ -225,7 +225,7 @@ export const PardonFetchExecution = pardonExecution({
         },
       };
 
-      const archetype = httpsRequestSchema(request.meta?.body, {
+      const archetype = httpsRequestSchema({
         search: { multivalue: request?.meta?.searchParams == "multi" },
       });
 
@@ -452,7 +452,7 @@ export const PardonFetchExecution = pardonExecution({
     let matchedOutcome: string | undefined;
 
     let matcher = new ProgressiveMatch({
-      schema: httpsResponseSchema(encoding),
+      schema: httpsResponseSchema(),
       match: true,
       object: {
         ...inbound,
@@ -488,13 +488,13 @@ export const PardonFetchExecution = pardonExecution({
       }
     }
 
-    const responseSchema = httpsResponseSchema(encoding);
+    const responseSchema = httpsResponseSchema();
 
     // no response templates, we just try to match the basic response
     // so we can maybe reformat the json.
     if (!matchedSchema) {
       const merged = mergeSchema(
-        { mode: "match", phase: "build" },
+        { mode: "match", phase: "build", body: encoding },
         responseSchema,
         inbound,
         new ScriptEnvironment(),
