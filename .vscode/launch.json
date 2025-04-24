@@ -15,8 +15,7 @@
         "--stack-trace-limit=100",
         "src/entry/main/cli/index.ts",
         "test.http",
-        "--http",
-        "--curl"
+        "--http"
       ],
       "console": "integratedTerminal",
       "internalConsoleOptions": "neverOpen",

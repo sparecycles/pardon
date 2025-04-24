@@ -93,6 +93,15 @@ export function bodyReference(template: Template<string>): Schematic<string> {
   }).$of(template);
 }
 
+export function searchReference(
+  template: Template<URLSearchParams>,
+): Schematic<URLSearchParams> {
+  return referenceTemplate({
+    ref: "search",
+    hint: ":?",
+  }).$of(template);
+}
+
 type BodySchematicOps = SchematicOps<string> & {
   readonly body: object;
 };
@@ -255,7 +264,9 @@ export function httpsRequestSchema() {
     method: "{{method = 'GET'}}",
     origin: originTemplate("{{?:origin}}"),
     pathname: pathnameTemplate("{{...pathname}}"),
-    searchParams: encodingTemplate(queryEncodingType, mvKeyedTuples),
+    searchParams: searchReference(
+      encodingTemplate(queryEncodingType, mvKeyedTuples),
+    ),
     headers: headersTemplate(),
     body: bodyReference(bodyTemplate()),
     computations: hiddenTemplate<Record<string, unknown>>(),

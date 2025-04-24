@@ -590,7 +590,7 @@ ${request.reason}
               <Resizable.Panel
                 class="flex flex-col bg-neutral-200 dark:bg-neutral-600"
                 minSize={0.3}
-                initialSize={0.5}
+                initialSize={0.35}
                 collapsedSize={0.25}
                 collapsible
               >
@@ -780,7 +780,7 @@ ${request.reason}
                 </Resizable>
               </Resizable.Panel>
               <Resizable.Handle />
-              <Resizable.Panel class="flex flex-col">
+              <Resizable.Panel class="flex flex-col" initialSize={0.7}>
                 {() => {
                   return (
                     <>
@@ -917,12 +917,16 @@ ${request.reason}
                                     return previousRequestInfo ?? {};
                                   }
                                 } else if (
-                                  requestResource.state === "ready" &&
+                                  ["ready", "refreshing"].includes(
+                                    requestResource.state,
+                                  ) &&
                                   requestResource.latest?.status === "fulfilled"
                                 ) {
                                   http = requestResource.latest.value.http;
                                 } else if (
-                                  previewResource.state === "ready" &&
+                                  ["ready", "refreshing"].includes(
+                                    previewResource.state,
+                                  ) &&
                                   previewResource.latest?.status === "fulfilled"
                                 ) {
                                   http = previewResource.latest.value.http;
