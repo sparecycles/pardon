@@ -171,7 +171,7 @@ function makeMvKeymapTemplate<T>(
     keyTemplate,
     objects.scoped(
       multivalues,
-      mixTemplate(arrays.multiscope([archetype])),
+      mixTemplate(arrays.multiscope([archetype!])),
     ) as Schematic<Record<string, T[]>>,
   );
 }

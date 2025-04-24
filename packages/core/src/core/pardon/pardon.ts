@@ -54,6 +54,7 @@ import { JSON } from "../json.js";
 import { PardonRuntime } from "./types.js";
 import { valueId } from "../../util/value-id.js";
 import { PardonCompiler } from "../../runtime/compiler.js";
+import { cleanObject } from "../../util/clean-object.js";
 
 export type PardonAppContext = Pick<
   PardonRuntime,
@@ -329,13 +330,15 @@ export const PardonFetchExecution = pardonExecution({
     return {
       request: {
         ...rendered.output,
-        values: getContextualValues(redacted.context, {
+        meta: cleanObject({ ...rendered.output.meta, body: undefined }),
+        values: getContextualValues(rendered.context, {
           secrets: true,
         }),
       },
       redacted: {
         ...redacted.output,
-        values: getContextualValues(rendered.context),
+        meta: cleanObject({ ...redacted.output.meta, body: undefined }),
+        values: getContextualValues(redacted.context),
       },
       reduced,
       evaluationScope: rendered.context.evaluationScope,
