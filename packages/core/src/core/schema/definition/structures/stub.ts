@@ -13,6 +13,9 @@ import { diagnostic } from "../../core/context-util.js";
 import { defineSchema, executeOp } from "../../core/schema-ops.js";
 import { Schema, Template } from "../../core/types.js";
 
+const nullFallback = stubSchema(null);
+const undefinedFallback = stubSchema(undefined);
+
 export function stubSchema<T = any>(
   fallbackSchema?: Schema<T> | null,
 ): Schema<T> {
@@ -34,7 +37,11 @@ export function stubSchema<T = any>(
         );
       }
 
-      return stubSchema(fallbackSchema);
+      return fallbackSchema === undefined
+        ? undefinedFallback
+        : fallbackSchema === null
+          ? nullFallback
+          : stubSchema(fallbackSchema);
     },
     async render(context) {
       if (fallbackSchema === null) {

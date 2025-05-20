@@ -232,6 +232,8 @@ export type EvaluationScope = {
 } & ScopeData;
 
 export interface SchemaScriptEnvironment {
+  cache: Record<string, any>;
+
   name?(): string | undefined;
 
   evaluating<T>(info: {

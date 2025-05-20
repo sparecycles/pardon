@@ -937,6 +937,16 @@ export function datumTemplate<T extends Scalar>(
         },
       );
 
+      if (
+        !rep?.custom &&
+        !rep?.unboxed &&
+        rep?.patterns.length === 1 &&
+        isPatternLiteral(rep.patterns[0])
+      ) {
+        const key = "datum:" + rep.type + ":" + rep.patterns[0].source;
+        return (context.environment.cache[key] ??= defineScalar(rep));
+      }
+
       return rep && (defineScalar(rep) as Schema<T>);
     },
   });

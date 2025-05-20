@@ -71,6 +71,7 @@ export class ScriptEnvironment implements SchemaScriptEnvironment {
   resolvedDefaults?: ScriptDefaultsResolver;
   expression?: ScriptExpressionRenderer;
   options?: ScriptOptions;
+  cache: Record<string, any>;
 
   constructor({
     name,
@@ -119,6 +120,7 @@ export class ScriptEnvironment implements SchemaScriptEnvironment {
     this.redactor = redact;
     this.expression = express;
     this.options = options;
+    this.cache = {};
   }
 
   resolve({
