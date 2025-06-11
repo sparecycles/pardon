@@ -98,8 +98,7 @@ export type HttpsSchemeType<Mode extends string, Configuration> = {
 };
 
 export type HttpsScheme<Phase extends ResourceProcessingPhase> =
-  | HttpsFlowScheme
-  | HttpsTemplateScheme<Phase>;
+  Phase extends "flow" ? HttpsFlowScheme : HttpsTemplateScheme<Phase>;
 
 export type HttpsTemplateConfiguration<
   Phase extends ResourceProcessingPhase = "runtime",
@@ -123,10 +122,12 @@ export type HttpsTemplateScheme<
 
 export const HTTPS = { parse };
 
-function parse(
+function parse(file: string): HttpsScheme<"source">;
+function parse(file: string, mode: "flow"): HttpsFlowScheme;
+function parse<Mode extends HttpsMode>(
   file: string,
-  mode: HttpsMode = "mix",
-): HttpsScheme<HttpsMode extends "flow" ? "flow" : "source"> {
+  mode: Mode = "mix" as Mode,
+): Mode extends "flow" ? HttpsFlowScheme : HttpsScheme<"source"> {
   const lines = file.split("\n");
   const steps: HttpsStep[] = [];
   const inlineConfiguration: string[] = [];
@@ -175,7 +176,7 @@ function parse(
       configuration: YAML.parse(inlineConfiguration.join("\n")),
     }),
     mode,
-  } as HttpsFlowScheme;
+  } as Mode extends "flow" ? HttpsFlowScheme : HttpsScheme<"source">;
 }
 
 function scanRequestComputations(file: string) {

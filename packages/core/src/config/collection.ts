@@ -23,6 +23,7 @@ import {
 import {
   HTTPS,
   HttpsFlowScheme,
+  HttpsScheme,
   HttpsSchemeType,
   HttpsTemplateConfiguration,
   HttpsTemplateScheme,
@@ -390,26 +391,19 @@ function resolveExport(
   id: string,
   scripts: PardonCollection["scripts"],
   filesystem: Record<string, string>,
-  path: string,
-  configuration: Configuration<"source">,
+  sourcepath: string,
 ) {
-  if (configuration?.export) {
-    const sourcepath = resolve(
-      dirname(path),
-      relative(configuration.path, configuration.export),
-    );
-    const resolution = (scripts.resolutions[`pardon:${id}`] ??= []);
-    const identity = `pardon:${id}?${resolution.length}`;
-    if (sourcepath in filesystem) {
-      if ((scripts.identities[sourcepath] ??= identity) !== identity) {
-        throw new PardonError(
-          `cannot reidentify ${sourcepath} from ${scripts.identities[sourcepath]} to ${identity}`,
-        );
-      }
-
-      resolution.push({ path: sourcepath, content: filesystem[sourcepath] });
-      return true;
+  const resolution = (scripts.resolutions[`pardon:${id}`] ??= []);
+  const identity = `pardon:${id}?${resolution.length}`;
+  if (sourcepath in filesystem) {
+    if ((scripts.identities[sourcepath] ??= identity) !== identity) {
+      throw new PardonError(
+        `cannot reidentify ${sourcepath} from ${scripts.identities[sourcepath]} to ${identity}`,
+      );
     }
+
+    resolution.push({ path: sourcepath, content: filesystem[sourcepath] });
+    return true;
   }
 }
 
@@ -477,12 +471,15 @@ function addConfiguration({
       });
 
       if (
+        merged.export &&
         !resolveExport(
           id,
           scripts,
           filesystem,
-          path ?? resolve(root, merged.name),
-          merged,
+          resolve(
+            dirname(path ?? resolve(root, merged.name)),
+            relative(merged.path, merged.export),
+          ),
         ) &&
         configuration?.export
       ) {
@@ -532,8 +529,13 @@ function addEndpoint({
       });
 
       if (
-        !resolveExport(id, scripts, filesystem, path, endpoint.configuration) &&
-        configuration?.export
+        configuration?.export &&
+        !resolveExport(
+          id,
+          scripts,
+          filesystem,
+          resolve(path, relative(configuration.path, configuration.export)),
+        )
       ) {
         console.warn(
           `export: could not resolve direct reference to ${configuration.export} from ${path}`,
@@ -755,7 +757,7 @@ export function mergeConfigurations({
           }),
         ),
         export: exports
-          ? resolvePardonRelativeImport(exports, target)
+          ? mergeExport(exports, target, merged.export)
           : merged.export,
         mixin: [
           ...unmergedMixins(merged, mixin, target),
@@ -790,6 +792,17 @@ function unmergedMixins(
         (mixin) => ![merged.mixin].filter(Boolean).flat(1).includes(mixin),
       )
   );
+}
+
+function mergeExport(exports: string, target: string, mergedExport?: string) {
+  exports = resolvePardonRelativeImport(exports, target);
+  if (mergedExport && exports !== mergedExport) {
+    throw new PardonError(
+      `exports: cannot merge ${exports} with ${mergedExport}`,
+    );
+  }
+
+  return exports || mergedExport;
 }
 
 function parseAsset<T>(

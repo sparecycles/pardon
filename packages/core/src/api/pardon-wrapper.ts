@@ -12,7 +12,6 @@ governing permissions and limitations under the License.
 import { runFlow } from "../core/execution/flow/flow-core.js";
 import { compileHttpsFlow } from "../core/execution/flow/https-flow.js";
 import { HTTP } from "../core/formats/http-fmt.js";
-import { HttpsFlowScheme } from "../core/formats/https-fmt.js";
 
 import {
   PardonExecutionContext,
@@ -63,11 +62,31 @@ export function pardon(
   });
 }
 
+function undent(script: string) {
+  const lines = script.split("\n").filter(Boolean);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[0].trim()) {
+      lines.shift();
+      i--;
+      continue;
+    }
+  }
+
+  const indent = Math.min(
+    ...lines
+      .filter((line) => line.trim())
+      .map((line) => line.length - line.trimStart().length),
+  );
+
+  return lines.map((line) => line.slice(indent)).join("\n");
+}
+
 // const { ... } = pardon.flow`....`({ ... })
 Object.assign(pardon, {
   flow: (template: TemplateStringsArray, ...args: unknown[]) => {
-    const https = String.raw(template, ...args);
-    const flowScheme = HTTPS.parse(https, "flow") as HttpsFlowScheme;
+    const https = undent(String.raw(template, ...args));
+    const flowScheme = HTTPS.parse(https, "flow");
     const flow = compileHttpsFlow(flowScheme, {
       name: "script",
       path: "pardon:script",
