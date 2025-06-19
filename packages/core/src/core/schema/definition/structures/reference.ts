@@ -29,6 +29,7 @@ import {
   Schematic,
   SchematicOps,
   Template,
+  ValueRelation,
 } from "../../core/types.js";
 import { stubSchema } from "./stub.js";
 import { RedactedOps } from "./redact.js";
@@ -40,11 +41,7 @@ import {
   ScalarType,
 } from "../scalar.js";
 import { datums, datumTemplate } from "../datum.js";
-import {
-  diagnostic,
-  isAbstractContext,
-  rescope,
-} from "../../core/context-util.js";
+import { diagnostic, isAbstractContext } from "../../core/context-util.js";
 import { isMergingContext } from "../../core/schema.js";
 import { isPatternSimple, patternize } from "../../core/pattern.js";
 
@@ -121,6 +118,7 @@ export function referenceTemplate<T = unknown>(
   const referenceSchematic = defineSchematic<ReferenceSchematicOps<T>>({
     expand(context) {
       const { ref } = reference;
+      console.log(`reference: ${ref}: expand`);
 
       const schema = defineReference({
         refs: new Set([ref].filter(Boolean)),
@@ -144,9 +142,9 @@ export function referenceTemplate<T = unknown>(
       return schema;
     },
     blend(context, next) {
-      let { template } = reference;
-      const { ref } = reference;
-      const hint = new Set([...(reference.hint ?? "")]);
+      let { ref, template } = reference;
+      console.log(`reference: ${ref}: blend`);
+      let hint = reference.hint ?? "";
 
       while (isSchematic(template)) {
         const ops = exposeSchematic<RedactedOps<T>>(template);
@@ -155,7 +153,7 @@ export function referenceTemplate<T = unknown>(
           break;
         }
 
-        hint.add("@");
+        if (!hint.includes("@")) hint += "@";
         template = ops.template;
       }
 
@@ -172,7 +170,7 @@ export function referenceTemplate<T = unknown>(
 
       return defineReference({
         refs: new Set([ref].filter(Boolean)),
-        hint: [...hint].join(""),
+        hint,
         schema,
         encoding: reference.encoding,
         anull: reference.anull,
@@ -281,7 +279,7 @@ export function defineReference<T = unknown>(
 
       if (info) {
         const { ref } = info;
-        const mergedHint = `${hint}${info.hint ?? ""}`;
+        const mergedHint = `${hint ?? ""}${info.hint ?? ""}`;
 
         let merged = schema;
 
@@ -442,17 +440,22 @@ export function defineReference<T = unknown>(
 
     const { evaluationScope: scope } = context;
 
+    const relations = [...refs].map<ValueRelation<T>>((ref) => ({
+      dependencies: [ref],
+      resolution() {
+        return context.evaluationScope?.lookup(ref)?.value as T;
+      },
+      async evaluation(context) {
+        return context.evaluationScope?.lookup(ref)?.value as T;
+      },
+    }));
+
     scope.declare(ref, {
       context,
       expression: null,
       hint: hint || null,
       source: null,
-      resolved(context) {
-        return resolveReference(rescope(context, scope) as SchemaContext<T>);
-      },
-      async rendered(context) {
-        return await renderReference(schema, rescope(context, scope));
-      },
+      relations,
     });
   }
 

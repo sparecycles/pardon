@@ -39,7 +39,7 @@ import {
   evaluateIdentifierWithExpression,
 } from "../core/evaluate.js";
 import { isMergingContext } from "../core/schema.js";
-import { isLookupValue, parseScopedIdentifier } from "../core/scope.js";
+import { isLookupValue } from "../core/scope.js";
 import {
   ExpressionDeclaration,
   Schema,
@@ -48,6 +48,7 @@ import {
   SchemaRenderContext,
   Schematic,
   SchematicOps,
+  ValueRelation,
 } from "../core/types.js";
 import {
   defineSchema,
@@ -196,41 +197,20 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
       // only consider expressions for the last-merged expressive definition.
       const exprPattern = patterns?.find(isPatternExpressive);
 
-      function renderedTrigger(
-        param: string,
-        pattern: Pattern,
-      ): ExpressionDeclaration["rendered"] {
-        // setup a triggered render for a value if the
-        // the pattern could be resolved via evaluation:
-        //
-        // we don't do this to avoid "cyclic dependencies" (worse and more expensive than "undefined" values),
-        // in the following cases:
-        //
-        // - trivial patterns can be resolved rather than rendered.
-        // - the param to be evaluated is in the pattern and not an expression.
-        // - every pattern is simple and not expressive (or has an expression in scope).
-        //
-        // (should this also skip cases for non-simple patterns?)
-        if (
-          isPatternTrivial(pattern) ||
-          pattern.vars.find((v) => v.param === param)?.expression ||
-          patterns.every(
-            (p) =>
-              p === pattern ||
-              (isPatternSimple(p) &&
-                !isPatternExpressive(p) &&
-                !context.evaluationScope.lookupDeclaration(
-                  parseScopedIdentifier(p.vars[0].param).name,
-                )?.rendered),
-          )
-        ) {
-          return;
-        }
-
-        return (context) => {
-          return renderAndLookup(rescope(context, scope), self, param);
-        };
-      }
+      const makeRelations = (target: string) =>
+        patterns.filter(isPatternRegex).map<ValueRelation<any>>(({ vars }) => {
+          return {
+            dependencies: vars.map(({ param }) => param).filter(Boolean),
+            resolution(context) {
+              context = rescope(context, scope);
+              return resolveAndLookup(context, self, target);
+            },
+            evaluation(context) {
+              context = rescope(context, scope);
+              return renderAndLookup(context, self, target);
+            },
+          };
+        });
 
       for (const pattern of patterns) {
         if (
@@ -245,14 +225,7 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
             expression: null,
             source,
             hint,
-            rendered: renderedTrigger(param, pattern),
-            resolved(context) {
-              return resolveAndLookup(
-                rescope(context, scope) as SchemaContext<Scalar>,
-                self,
-                param,
-              );
-            },
+            relations: makeRelations(param),
           });
 
           continue;
@@ -273,14 +246,7 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
               (exprPattern == pattern ? expression : undefined) ?? null,
             hint: hint ?? null,
             source: source ?? null,
-            rendered: renderedTrigger(param, pattern),
-            resolved(context) {
-              return resolveAndLookup(
-                rescope(context, scope) as SchemaContext<Scalar>,
-                self,
-                param,
-              );
-            },
+            relations: makeRelations(param),
           });
         });
       }
@@ -410,7 +376,7 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
 
               if (
                 declaration?.expression ||
-                declaration?.rendered ||
+                declaration?.relations?.length ||
                 patterns.some((pattern) => isPatternExpressive(pattern))
               ) {
                 diagnostic(context, "unresolved required pattern");
@@ -433,7 +399,7 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
       return defineScalar<T>(mergedSelf);
     },
     async render(context) {
-      const result = await renderScalar(context, self);
+      const result = renderScalar(context, self);
       return datumPreviewExpression(context, result) as T;
     },
     resolve(context) {
@@ -445,10 +411,8 @@ function defineScalar<T extends Scalar>(self: DatumRepresentation): Schema<T> {
 function renderScalar<T>(
   context: SchemaRenderContext,
   self: DatumRepresentation,
-): Exclude<T, undefined> | Promise<T | undefined> {
-  const { evaluationScope: scope } = context;
-
-  return scope.cached(context, () => doRenderScalar(context, self));
+): Promise<T | undefined> {
+  return doRenderScalar(context, self);
 }
 
 function resolveScalar<T extends Scalar>(
@@ -770,17 +734,11 @@ async function evaluateScalar(
     );
   }
 
-  // try all patterns for resolving this value.
-  for (const pattern of patterns) {
-    const result = await evaluatePattern(context, pattern);
-    if (result === undefined) {
-      continue;
-    }
+  const evalutions = await Promise.all(
+    patterns.map((pattern) => evaluatePattern(context, pattern)),
+  );
 
-    return result;
-  }
-
-  return undefined;
+  return evalutions.find((result) => result !== undefined);
 }
 
 async function evaluatePattern(context: SchemaRenderContext, pattern: Pattern) {

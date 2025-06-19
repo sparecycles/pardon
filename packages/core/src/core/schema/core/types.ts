@@ -140,6 +140,7 @@ export type Schema<T> = () => SchemaOps<T>;
 export type SchemaRenderContext = SchemaContextBase & {
   mode: "render" | "prerender" | "postrender" | "preview";
   evaluationScope: EvaluationScope;
+  evaluating: Set<any>;
   environment: SchemaScriptEnvironment;
 };
 
@@ -187,12 +188,6 @@ export type EvaluationScope = {
   imported(indentifer: string, context: SchemaRenderContext): void;
 
   define<T>(context: SchemaContext<T>, key: string, value: T): T | undefined;
-
-  cached<T>(
-    context: SchemaRenderContext,
-    action: () => Promise<T> | T,
-    ...keys: string[]
-  ): Promise<T> | Exclude<T, undefined>;
 
   rendering<T>(
     context: Pick<SchemaRenderContext, "evaluationScope">,
@@ -304,13 +299,19 @@ export type ValueDefinition = ValueDeclaration & {
   declaration?: ExpressionDeclaration;
 };
 
+export type ValueRelation<T> = {
+  dependencies: string[];
+  resolution(context: SchemaContext<T>): T | undefined;
+  evaluation(context: SchemaRenderContext): Promise<T | undefined>;
+};
+
 export type ExpressionDeclaration = ValueDeclaration & {
+  identifier: string;
   expression: string | null;
   hint: string | null;
   source: string | null;
   context: SchemaContext<unknown>;
-  resolved?(context: SchemaContext<unknown>): unknown | undefined;
-  rendered?(context: SchemaRenderContext): Promise<unknown | undefined>;
+  relations: ValueRelation<unknown>[];
   aggregates?: Record<string, AggregateDeclaration>;
   resolving?: boolean;
 };

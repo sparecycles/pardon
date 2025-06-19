@@ -21,6 +21,7 @@ import {
   SchemaRenderContext,
   Identifier,
   AggregateDeclaration,
+  ValueRelation,
 } from "./types.js";
 
 export function evaluateIdentifierWithExpression(
@@ -83,6 +84,12 @@ function synthesizeExpressionDeclaration(
       return {
         ...lookup,
         expression: expression ?? lookup.expression,
+        context: lookup.context
+          ? {
+              ...lookup.context,
+              evaluating: context.evaluating,
+            }
+          : null,
       } as typeof lookup & { context: SchemaRenderContext };
     }
   }
@@ -96,6 +103,7 @@ function synthesizeExpressionDeclaration(
       expression === undefined
         ? `{{}}`
         : `{{ = $$expr(${JSON.stringify(expression)}) }}`,
+    relations: [] as ValueRelation<any>[],
   };
 }
 
@@ -104,7 +112,12 @@ async function renderIdentifierInExpression(
   name: string,
   renderExpression?: string,
 ) {
-  const { context, expression, source, hint, rendered, aggregates } =
+  renderContext = {
+    ...renderContext,
+    evaluating: new Set(renderContext.evaluating).add(name),
+  };
+
+  const { context, expression, source, hint, relations, aggregates } =
     synthesizeExpressionDeclaration(renderContext, name, renderExpression);
 
   if (!context) {
@@ -128,7 +141,7 @@ async function renderIdentifierInExpression(
       });
     }
 
-    const ambientResult = await rendered?.(context);
+    const ambientResult = await renderRelated(name, context, relations);
 
     if (ambientResult !== undefined) {
       return ambientResult;
@@ -145,6 +158,28 @@ async function renderIdentifierInExpression(
 
     return result;
   });
+}
+
+async function renderRelated<T>(
+  name: string,
+  context: SchemaRenderContext,
+  relations: ValueRelation<T>[],
+) {
+  console.log(`${loc(context)} rendering related`);
+
+  if (context.evaluating.has(name)) {
+    return undefined;
+  }
+
+  for (const { dependencies, evaluation } of relations) {
+    for (const dependency of dependencies) {
+      await renderIdentifierInExpression(context, dependency);
+    }
+    const result = await evaluation(context);
+    if (result) {
+      return context.evaluationScope.define(context, name, result);
+    }
+  }
 }
 
 async function evaluateAggregates(

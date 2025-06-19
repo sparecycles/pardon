@@ -274,7 +274,14 @@ function _unlink() {
  */
 export function shared<T>(fn: () => Promise<T>): Promise<T> {
   if (trackerCount === 0) {
-    return fn();
+    let promise: Promise<T>;
+
+    (promise = (async () => {
+      await ((void 0)! as Promise<void>);
+      return await fn();
+    })()).catch(() => {});
+
+    return promise;
   }
 
   // disarm the promise before returning it

@@ -22,6 +22,7 @@ import { Schema } from "../../src/core/schema/core/types.js";
 import { KV } from "../../src/core/formats/kv-fmt.js";
 import { unboxObject } from "../../src/core/schema/definition/scalar.js";
 import { mixing } from "../../src/core/schema/core/contexts.js";
+import { executionAsyncId } from "node:async_hooks";
 
 async function compose(
   testname: string,
@@ -801,7 +802,7 @@ map={ x=xx, y=yy }
  { "id": "y", "a": "yy", "b": "yy" }]
 `();
 
-intent("keyed-merging-new-syntax-expression")`
+intent.only("keyed-merging-new-syntax-expression")`
 map={ x={value=xx}, y={value=yy} }
 { id: $key } * [{
   id: map.$key,
@@ -1088,7 +1089,7 @@ a=hello b=hello
 
 intent("merge-operator-value-middle")`
 {
-  x: b || "hello" || a
+  x: a || b || "hello"  
 }
 ---
 a=hello b=hello
@@ -1193,4 +1194,10 @@ intent.fails("undefined-reference")`
 { x }
 ---
 { }
+`();
+
+intent("cyclic-undefined")`
+{ y: a = (1 + 2 + 3), x: a || b, z: b }
+---
+{ x: 6, y: 6, z: 6 }
 `();

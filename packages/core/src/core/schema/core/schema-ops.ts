@@ -140,8 +140,6 @@ export function merge<T>(
   schema: Schema<T>,
   context: SchemaMergingContext<T>,
 ): Schema<T> | undefined {
-  const scheme = exposeSchema(schema);
-
   if (isSchematic(context.template)) {
     const ops = exposeSchematic<SchematicOps<T>>(context.template);
 
@@ -152,7 +150,7 @@ export function merge<T>(
     }
   }
 
-  return scheme.merge!(context) as Schema<T> | undefined;
+  return exposeSchema(schema).merge!(context) as Schema<T> | undefined;
 }
 
 export function isSchema<T = unknown>(thing: unknown): thing is Schema<T> {
