@@ -63,13 +63,14 @@ function traceRequest({
 function traceResult({
   context,
   match: { endpoint },
-  result: { egress, ingress, output },
-}: Pick<ProcessedHookInput, "context" | "match" | "result">) {
+  result: { egress, ingress, output, error },
+}: Pick<ProcessedHookInput, "context" | "match" | "result" | "error">) {
   return {
     context,
     endpoint,
     egress: withoutEvaluationScope(egress),
-    ingress: withoutEvaluationScope(ingress),
+    ingress: ingress && withoutEvaluationScope(ingress),
+    error,
     output,
   };
 }
