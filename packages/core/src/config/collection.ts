@@ -119,6 +119,13 @@ export function processCollectionLayer(sources: Record<string, AssetSource>): {
           id: `pardon:${name.replace(/[.][tj]s$/, "")}`,
           source,
         };
+      case /[.]proto(?:buf)?$/.test(name):
+        return {
+          type: "protocol" as const,
+          name,
+          id: `pardon:${name}`,
+          source,
+        };
       default:
         return {
           type: "unknown" as const,
@@ -680,7 +687,13 @@ export function mergeConfigurations({
     .reduce<
       Pick<
         Configuration<"runtime">,
-        "config" | "defaults" | "import" | "export" | "mixin" | "type"
+        | "config"
+        | "defaults"
+        | "import"
+        | "export"
+        | "mixin"
+        | "type"
+        | "protocols"
       >
     >(
       (
@@ -692,6 +705,8 @@ export function mergeConfigurations({
           export: exports,
           mixin,
           type,
+          protocols,
+          path,
           //...other
         },
       ) => ({
@@ -704,7 +719,7 @@ export function mergeConfigurations({
           {},
           merged.import!,
           mapObject(imports || {}, {
-            keys: (key) => resolvePardonRelativeImport(key, target),
+            keys: (key) => resolvePardonRelativeImport(key, target, path),
             values: (value, key) => {
               let current = merged.import?.[key];
               if (!current) {
@@ -733,18 +748,26 @@ export function mergeConfigurations({
           }),
         ),
         export: exports
-          ? resolvePardonRelativeImport(exports, target)
+          ? resolvePardonRelativeImport(exports, target, path!)
           : merged.export,
         mixin: [
           ...unmergedMixins(merged, mixin, target),
           ...(merged.mixin || []),
+        ],
+        protocols: [
+          ...new Set([
+            ...(merged.protocols ?? []),
+            ...(protocols ?? []).map((protocol) =>
+              resolvePardonRelativeImport(protocol, target, path),
+            ),
+          ]),
         ],
         type:
           merged.type === "service" || type === "service"
             ? ("service" as const)
             : ("config" as const),
       }),
-      { config: [{}], defaults: {}, import: {}, mixin: [] },
+      { config: [{}], defaults: {}, import: {}, mixin: [], protocols: [] },
     );
 
   return { ...merged, name, path: target };

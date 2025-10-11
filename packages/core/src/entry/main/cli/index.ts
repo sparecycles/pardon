@@ -34,6 +34,7 @@ import { JSON } from "../../../core/raw-json.js";
 import contentEncodings from "../../../features/content-encodings.js";
 import { resolve } from "node:path";
 import { executeHttpsFlowInContext } from "../../../core/execution/flow/https-flow.js";
+import grpcHook from "../../../features/grpc.js";
 
 main()
   .then((code) => process.exit(code))
@@ -90,7 +91,7 @@ usage
 
   const context = await initializePardon(
     { environment: values, cwd: options.cwd },
-    [undici, contentEncodings, trace, persist],
+    [undici, grpcHook, contentEncodings, trace, persist],
   );
 
   if (options["show-root"]) {

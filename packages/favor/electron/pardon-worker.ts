@@ -30,6 +30,7 @@ import { httpOps, valueOps } from "pardon/database";
 
 import { traced } from "pardon/features/trace";
 import undici from "pardon/features/undici";
+import grpcHook from "pardon/features/grpc";
 import encodings from "pardon/features/content-encodings";
 import persist, {
   type PardonHttpExecutionContext,
@@ -147,6 +148,7 @@ async function initializePardonAndLoadSamples(
 ) {
   const app = await initializePardon(options, [
     undici,
+    grpcHook,
     encodings,
     failfast,
     traced(

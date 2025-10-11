@@ -1,0 +1,50 @@
+---
+# Copyright 2025 Adobe. All rights reserved.
+# This file is licensed to you under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License. You may obtain a copy
+# of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software distributed under
+# the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR REPRESENTATIONS
+# OF ANY KIND, either express or implied. See the License for the specific language
+# governing permissions and limitations under the License.
+
+title: gRPC support
+description: limited support for gRPC calls
+next: false
+prev: false
+---
+
+## gRPC Support
+
+Pardon has initial support for (non-streaming) gRPC calls.
+The gRPC protocol is similar enough to http that we can use HTTP
+syntax to represent a simple gRPC call: the method being called can be
+represented with the path, any metadata can be specified as request headers,
+and the argument to the call is specified as the request body.
+
+We use the http verb `RPC` to select the `gRPC` transport:
+
+```http
+RPC https://service.example.com/package.Service/Method
+Metadata: value
+
+{ ... }
+```
+
+Secure calls are specified with `https:` and insecure calls
+can be made with `http:` in the URL protocol.
+
+Your service collecton must also have entries describing the protocols in `.https` files:
+
+```yaml
+protocols:
+ - path/to/protocol.proto
+```
+
+These are loaded when a gRPC call is attempted.
+
+:::note
+Using gRPC currently skips the default undici implementation
+for the request: disabling the DNS resolution override.
+:::

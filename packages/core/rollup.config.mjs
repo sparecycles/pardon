@@ -14,7 +14,9 @@ import esbuild from "rollup-plugin-esbuild";
 import dts from "rollup-plugin-dts";
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import json from "@rollup/plugin-json";
 import hashbang from "rollup-plugin-hashbang";
+import { globSync } from "fs";
 
 const executables = {
   main: "src/entry/main/cli/index.ts",
@@ -41,6 +43,7 @@ const input = {
   templates: "src/modules/templates.ts",
   // built-in features
   "features/undici": "src/features/undici.ts",
+  "features/grpc": "src/features/grpc.ts",
   "features/trace": "src/features/trace.ts",
   "features/persist": "src/features/persist.ts",
   "features/content-encodings": "src/features/content-encodings.ts",
@@ -78,6 +81,7 @@ export default [
               commonjs({
                 esmExternals: true,
               }),
+              json({ compact: true }),
             ]),
       ],
       external: [
@@ -85,6 +89,8 @@ export default [
         "@types/better-sqlite3",
         "fsevents",
         "node:sqlite",
+        "protobufjs",
+        ...globSync(["@grpc/*", "@protobufjs/*"], { cwd: "./node_modules" }),
       ],
     }),
 );

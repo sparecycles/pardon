@@ -558,11 +558,11 @@ export const PardonFetchExecution = pardonExecution({
             secrets: true,
           }),
         ),
-      },
+      } as HttpsRequestObject,
       redacted: {
         ...redacted.output,
         values: cleanRequestValues(getContextualValues(rendered.context)),
-      },
+      } as HttpsRequestObject,
       reduced,
       evaluationScope: rendered.context.evaluationScope,
     };

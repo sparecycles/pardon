@@ -39,6 +39,7 @@ export type Configuration<
   import?: ConfigurationImports;
   defaults?: DefaultsMap;
   mixin?: string | string[];
+  protocols?: string[];
   type?: "service" | "config";
 } & (ProcessingPhase extends "source"
   ? {

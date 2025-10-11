@@ -10,7 +10,7 @@ OF ANY KIND, either express or implied. See the License for the specific languag
 governing permissions and limitations under the License.
 */
 import type Module from "node:module";
-import { posix } from "node:path";
+import { dirname, posix, resolve } from "node:path";
 import { readFileSync } from "node:fs";
 
 import { Project, SourceFile, ts } from "ts-morph";
@@ -118,7 +118,7 @@ const withImportTransform: (identity: string) => TsMorphTransform =
   };
 
 export default function createCompiler({
-  collection: { data, scripts },
+  collection: { data, scripts, assets },
 }: {
   collection: PardonCollection;
 }) {
@@ -178,10 +178,11 @@ export default function createCompiler({
     resolveModule: resolvePardonOrExternalModule,
     resolve: resolvePardonRelativeImport,
     import: importModule,
+    resolveAsset,
   };
 
   async function importModule(specifier: string, parentSpecifier: string) {
-    const resolved = resolvePardonRelativeImport(specifier, parentSpecifier);
+    const resolved = resolvePardonOrExternalModule(specifier, parentSpecifier);
 
     const module = await shared(() => import(/* @vite-ignore */ resolved));
 
@@ -228,6 +229,14 @@ export default function createCompiler({
     }
 
     throw new PardonError(`${moduleSpecifier}: unresolved`);
+  }
+
+  function resolveAsset(moduleSpecifier: string) {
+    if (!moduleSpecifier.startsWith("pardon:")) {
+      return [moduleSpecifier];
+    }
+
+    return assets[moduleSpecifier].sources.map(({ path }) => path);
   }
 
   function compile(moduleSpecifier: string, context: Module.LoadHookContext) {
@@ -297,8 +306,18 @@ export default function createCompiler({
 export function resolvePardonRelativeImport(
   moduleSpecifier: string,
   parentSpecifier: string,
+  parentPath?: string,
 ) {
-  return resolvePardonOrExternalModule(moduleSpecifier, parentSpecifier);
+  const resolved = resolvePardonOrExternalModule(
+    moduleSpecifier,
+    parentSpecifier,
+  );
+
+  if (!parentPath || !ts.isExternalModuleNameRelative(resolved)) {
+    return resolved;
+  }
+
+  return normalize(resolve(dirname(parentPath), moduleSpecifier));
 }
 
 function resolvePardonOrExternalModule(

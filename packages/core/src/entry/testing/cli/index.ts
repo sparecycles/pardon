@@ -26,6 +26,7 @@ import {
 } from "../runner.js";
 import { extractKVs } from "../../../util/kv-options.js";
 import persist from "../../../features/persist.js";
+import grpcHook from "../../../features/grpc.js";
 import failfast, {
   executeWithFastFail,
 } from "../../../core/execution/flow/failfast.js";
@@ -34,6 +35,7 @@ import { JSON } from "../../../core/raw-json.js";
 import { parseSmokeConfig } from "../smoke-config.js";
 import contentEncodings from "../../../features/content-encodings.js";
 import { createFlowContext } from "../../../core/execution/flow/flow-context.js";
+import undici from "../../../features/undici.js";
 
 // execute tests
 main().then(
@@ -104,7 +106,7 @@ async function main() {
         return createFlowContext(this, { ...environment });
       },
     },
-    [ff && failfast, contentEncodings, trace, persist],
+    [undici, grpcHook, ff && failfast, contentEncodings, trace, persist],
   );
 
   const testfile = positionals[0].endsWith(".test.ts")

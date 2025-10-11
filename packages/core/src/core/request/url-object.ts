@@ -31,7 +31,7 @@ export function parseURL(
     const urlpattern = patternize(url);
 
     const match =
-      /^(?:([a-z]+:[/][/][^/?#]+)|[/][/])?([/][^?#]*)?([?][^#]*)?([#].*)?$/
+      /^(?:([a-z][a-z0-9.+-]*:[/][/][^/?#]+)|[/][/])?([/][^?#]*)?([?][^#]*)?([#].*)?$/
         .exec(urlpattern.template)
         ?.slice(1, 5)
         ?.map((part) => depatternize(part ?? "", urlpattern));

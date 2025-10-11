@@ -63,6 +63,10 @@
       "import": "./dist/features/persist.js",
       "types": "./dist/types/features/persist.d.ts"
     },
+    "./features/grpc": {
+      "import": "./dist/features/grpc.js",
+      "types": "./dist/types/features/grpc.d.ts"
+    },
     "./features/trace": {
       "import": "./dist/features/trace.js",
       "types": "./dist/types/features/trace.d.ts"
@@ -91,6 +95,7 @@
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^9.8.0",
     "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "@rollup/plugin-typescript": "^12.1.0",
     "@types/better-sqlite3": "^7.6.5",
@@ -124,7 +129,8 @@
     "yaml": "^2.3.2"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.2.0"
+    "better-sqlite3": "^12.2.0",
+    "@grpc/grpc-js": "^1.14.0"
   },
   "overrides": {
     "patch-package": {

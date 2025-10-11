@@ -45,6 +45,7 @@ export type AssetType =
   | "flow"
   | "endpoint"
   | "script"
+  | "protocol"
   | "unknown";
 
 export type AssetSubType = "flow";

@@ -55,6 +55,7 @@ export default defineConfig({
             { label: "The HTTPS format", link: "/reference/https-format" },
             { label: "Template Runtime", link: "/reference/template-runtime" },
             { label: "Built-in values", link: "/reference/builtin-values" },
+            { label: "gRPC support", link: "/reference/grpc-support" },
           ],
         },
         {

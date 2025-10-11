@@ -9,6 +9,7 @@ the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR REPRESENTA
 OF ANY KIND, either express or implied. See the License for the specific language
 governing permissions and limitations under the License.
 */
+import { globSync } from "node:fs";
 import { extendMainConfig } from "./vite.base.config.ts";
 
 // https://vitejs.dev/config
@@ -20,7 +21,10 @@ export default extendMainConfig({
     sourcemap: "inline",
     minify: false,
     rollupOptions: {
-      external: ["better-sqlite3"],
+      external: [
+        "better-sqlite3",
+        ...globSync(["@grpc/*", "@protobufjs/*"], { cwd: "./node_modules" }),
+      ],
       input: {
         main: "./electron/main.ts",
         "pardon-worker": "./electron/pardon-worker.ts",
